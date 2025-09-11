@@ -1,0 +1,37 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "akamai-ml-operator.fullname" . }}
+  labels:
+    {{- include "akamai-ml-operator.labels" . | nindent 4 }}
+rules:
+# Watch and manage AkamaiKnowledgeBase custom resources
+- apiGroups: ["linode.com"]
+  resources: ["akamaiknowledgebases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["linode.com"]
+  resources: ["akamaiknowledgebases/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["linode.com"]
+  resources: ["akamaiknowledgebases/finalizers"]
+  verbs: ["update"]
+
+# Watch namespaces for namespace-level events
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+
+# Kopf framework requirements for operator functionality
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+
+# Leader election (if using kopf peering)
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# Kopf operator annotations and status
+- apiGroups: ["kopf.dev"]
+  resources: ["clusterkopfpeerings", "kopfpeerings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

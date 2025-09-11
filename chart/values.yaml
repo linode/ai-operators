@@ -1,0 +1,75 @@
+# Default values for akamai-ml-operator
+replicaCount: 1
+
+image:
+  repository: linode/akamai-ml-operator
+  pullPolicy: IfNotPresent
+  tag: "0.1.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Operator configuration
+operator:
+  # Log level for the operator
+  logLevel: INFO
+  # Namespaces to watch (comma-separated, empty means all namespaces)
+  watchNamespaces: ""
+  # Kopf configuration
+  kopf:
+    # Peering name for leader election
+    peeringName: "akamai-ml-operator"
+    # Startup/shutdown timeout
+    timeout: 300
+
+# Environment variables
+env: {}
+
+# Monitoring
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    path: /metrics

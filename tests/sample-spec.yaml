@@ -1,0 +1,12 @@
+data:
+  url: https://example.com/kb-data
+indexing:
+  embeddingModelEndpoint: model.model-namespace.svc.cluster.local
+  embeddingModelName: e5-mistral-7b
+  embeddingDimension: 4096
+  embeddingPipeline: pipeline
+  dbHostReadWrite: pgvector-rw.team-demo.svc.cluster.local
+  dbHostRead: pgvector-r.team-demo.svc.cluster.local
+  dbName: app
+  dbPort: 5432
+  dbSecretName: pgvector-app
