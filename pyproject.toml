@@ -30,7 +30,7 @@ lint = "ruff check ."
 _fix = "ruff check --fix ."
 format = "ruff format ."
 fix = ["_fix", "format"]
-export-deps = "uv export --format=requirements.txt --output-file=dependencies/requirements.txt --no-dev --no-editable --no-hashes"
+export-deps = "uv export --format=requirements.txt --output-file=dependencies/requirements.txt --no-dev --no-emit-project"
 dev = "kopf run -A -m ml_operator --verbose --dev"
 
 [tool.pytest.ini_options]
