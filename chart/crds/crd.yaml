@@ -1,11 +1,11 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: akamaiknowledgebase.linode.com
+  name: akamaiknowledgebases.akamai.io
 spec:
-  group: linode.com
+  group: akamai.io
   versions:
-  - name: v1
+  - name: v1alpha1
     served: true
     storage: true
     schema:
@@ -26,14 +26,6 @@ spec:
                 type: string
                 pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
                 maxLength: 253
-              labels:
-                type: object
-                additionalProperties:
-                  type: string
-                properties:
-                  apl.io/teamId:
-                    type: string
-                    description: Team identifier for APL resources
           spec:
             type: object
             required:
@@ -67,7 +59,6 @@ spec:
                   embeddingModelEndpoint:
                     description: URL to the embedding model endpoint (cluster local)
                     type: string
-                    format: uri
                   embeddingModelName:
                     description: Name of the embedding model service
                     type: string

@@ -6,13 +6,13 @@ metadata:
     {{- include "akamai-ml-operator.labels" . | nindent 4 }}
 rules:
 # Watch and manage AkamaiKnowledgeBase custom resources
-- apiGroups: ["linode.com"]
+- apiGroups: ["akamai.io"]
   resources: ["akamaiknowledgebases"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["linode.com"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["akamai.io"]
   resources: ["akamaiknowledgebases/status"]
   verbs: ["get", "update", "patch"]
-- apiGroups: ["linode.com"]
+- apiGroups: ["akamai.io"]
   resources: ["akamaiknowledgebases/finalizers"]
   verbs: ["update"]
 

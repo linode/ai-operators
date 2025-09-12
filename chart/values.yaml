@@ -58,10 +58,10 @@ operator:
   kopf:
     # Verbose log level for the operator
     verbose: false
+    # Log format can be one of plain|full|json
+    logFormat: "plain"
     # Peering name for leader election
     peeringName: "akamai-ml-operator"
-    # Startup/shutdown timeout
-    timeout: 300
 
 # Environment variables
 env: {}
