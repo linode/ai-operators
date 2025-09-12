@@ -1,4 +1,8 @@
+from typing import Any
+
 from attrs import define
+
+from .converter import converter
 
 
 @define
@@ -23,3 +27,7 @@ class KBIndexing:
 class AkamaiKnowledgeBase:
     data: KBData
     indexing: KBIndexing
+
+    @classmethod
+    def from_spec(cls, spec: dict[str, Any]) -> "AkamaiKnowledgeBase":
+        return converter.structure(spec, cls)
