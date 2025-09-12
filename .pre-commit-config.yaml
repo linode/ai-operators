@@ -9,7 +9,7 @@ repos:
     rev: 0.8.17
     hooks:
       - id: uv-export
-        args: ["--format=requirements.txt", "--output-file=dependencies/requirements.txt", "--no-dev", "--quiet"]
+        args: ["--format=requirements.txt", "--output-file=dependencies/requirements.txt", "--no-dev", "--no-editable", "--no-hashes", "--quiet"]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.0
     hooks:
