@@ -5,20 +5,35 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "attrs>=25.3.0",
     "cattrs>=25.2.0",
     "kopf[uvloop]>=1.38.0",
 ]
 
 [dependency-groups]
 dev = [
+    "kubernetes-asyncio>=33.3.0",
     "poethepoet>=0.37.0",
+    "pre-commit>=4.3.0",
     "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
     "ruff>=0.12.12",
 ]
+
+[build-system]
+requires = ["uv_build >= 0.7.19, <0.9.0"]
+build-backend = "uv_build"
 
 [tool.poe.tasks]
 test = "pytest tests/"
 lint = "ruff check ."
+_fix = "ruff check --fix ."
 format = "ruff format ."
-export-deps = "uv export --format requirements.txt -o dependencies/requirements.txt --no-dev"
-dev = "kopf run -A src/operator/main.py --verbose --dev"
+fix = ["_fix", "format"]
+export-deps = "uv export --format=requirements.txt --output-file=dependencies/requirements.txt --no-dev"
+dev = "kopf run -A -m ml_operator --verbose --dev"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_test_loop_scope = "session"
+pythonpath = "src"
