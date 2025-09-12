@@ -36,15 +36,16 @@ spec:
         - -m
         - kopf
         - run
-        - /app/src/akamaioperator/main.py
+        - /app/main.py
         args:
-        - --verbose={{ .Values.operator.logLevel }}
-        {{- if .Values.operator.watchNamespaces }}
-        - --namespaces={{ .Values.operator.watchNamespaces }}
-        {{- else }}
         - --all-namespaces
-        {{- end }}
+        - --verbose={{ .Values.operator.kopf.verbose }}
+        {{- if eq .Values.replicas 1 }}
+        - --standalone
+        {{- else }}
         - --peering={{ .Values.operator.kopf.peeringName }}
+        {{- end }}
+        -- --liveness=http://0.0.0.0:8080/healthz
         env:
         - name: KOPF_LOG_FORMAT
           value: "json"
@@ -70,22 +71,11 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 3
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        - name: cache
-          mountPath: /app/.cache
       volumes:
       - name: tmp
-        emptyDir: {}
-      - name: cache
         emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:

@@ -52,12 +52,12 @@ affinity: {}
 
 # Operator configuration
 operator:
-  # Log level for the operator
-  logLevel: INFO
   # Namespaces to watch (comma-separated, empty means all namespaces)
   watchNamespaces: ""
   # Kopf configuration
   kopf:
+    # Verbose log level for the operator
+    verbose: false
     # Peering name for leader election
     peeringName: "akamai-ml-operator"
     # Startup/shutdown timeout
