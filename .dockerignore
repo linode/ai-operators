@@ -1,0 +1,7 @@
+/.venv
+/venv
+/env
+/docs
+/tests
+__pycache__/
+.env
