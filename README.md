@@ -15,7 +15,9 @@ A few utility commands are set up using `poe`. Outside the virtual environment,
 * `test`: runs all tests
 * `lint`: checks on formatting
 * `format`: fixes formatting
+* `fix`: fixes formatting and other rules, e.g. import sorting
 * `export-deps`: regenerates the requirements.txt in `dependencies/`
+* `dev`: Run the operator locally
 
 ## Structure
 
