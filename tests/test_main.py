@@ -10,7 +10,12 @@ import pytest
 import yaml
 from kopf.testing import KopfRunner
 from kubernetes_asyncio import config as k8s_config
-from kubernetes_asyncio.client import ApiException, CustomObjectsApi, ApiextensionsV1Api
+from kubernetes_asyncio.client import (
+    ApiException,
+    CoreV1Api,
+    CustomObjectsApi,
+    ApiextensionsV1Api,
+)
 from kubernetes_asyncio.client.api_client import ApiClient
 
 from ml_operator.constants import CUSTOM_API_ARGS
@@ -20,6 +25,13 @@ from .common import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 _DIR = Path(__file__).parent
 
 # All tests in this module only run if env variable USE_CLUSTER is set
+#
+# WARNING:
+# Tests below modify resources on a running K8s cluster! The "crd" fixture
+# will fail if the CRD already exists, otherwise all resources are also cleaned
+# up after tests. Make sure you are on the right cluster before setting this
+# environment variable!
+#
 USE_CLUSTER = (var := os.getenv("USE_CLUSTER")) and var not in ("0", "false")
 pytestmark = pytest.mark.skipif(
     not USE_CLUSTER, reason="Requires a Kubernetes cluster to be configured"
@@ -35,6 +47,7 @@ def runner():
        ... do things
     ```
     """
+    os.environ["WATCH_NAMESPACES"] = "ml-operator-test"
     return KopfRunner(["run", "-A", "-m", "ml_operator", "--verbose"])
 
 
@@ -44,6 +57,28 @@ async def k8s():
     Utility to set up a Kubernetes API client.
     """
     await k8s_config.load_config()
+
+
+@pytest.fixture(scope="module")
+async def namespaces(k8s):
+    """
+    Ensures test-related namespaces for the test exist. Does not clean up.
+    """
+    test_namespaces = ["ml-operator-test", "ml-operator-unrelated"]
+    async with ApiClient() as api:
+        core_api = CoreV1Api(api)
+        namespaces = await core_api.list_namespace()
+        namespace_names = {namespace.metadata.name for namespace in namespaces.items}
+        await asyncio.gather(
+            *[
+                core_api.create_namespace(
+                    {"kind": "Namespace", "metadata": {"name": name}}
+                )
+                for name in test_namespaces
+                if name not in namespace_names
+            ]
+        )
+    yield test_namespaces
 
 
 @pytest.fixture(scope="module")
@@ -130,50 +165,66 @@ async def test_lifecycle(
     mock_create,
     crd: None,
     runner: KopfRunner,
+    namespaces: list[str],
 ):
     sample_cr = create_sample_cr("lifecycle-test")
     with runner:
-        async with ApiClient() as api:
-            custom_api = CustomObjectsApi(api)
-            await custom_api.create_namespaced_custom_object(
-                **CUSTOM_API_ARGS,
-                namespace="team-demo",
-                body=sample_cr,
-            )
-            await sleep(5)
-            mock_create.assert_called_once_with(
-                "team-demo", "lifecycle-test", SAMPLE_KB_OBJECT
-            )
+        for namespace in namespaces:
+            expect_call = namespace != "ml-operator-unrelated"
+            mock_create.reset_mock()
+            mock_update.reset_mock()
+            mock_delete.reset_mock()
 
-            await custom_api.patch_namespaced_custom_object(
-                **CUSTOM_API_ARGS,
-                namespace="team-demo",
-                name="lifecycle-test",
-                body=[
-                    {
-                        "op": "replace",
-                        "path": "/spec/indexing/dbSecretName",
-                        "value": "pgvector2-app",
-                    }
-                ],
-            )
-            await sleep(5)
-            updated_spec = deepcopy(SAMPLE_KB_DICT)
-            updated_spec["indexing"]["dbSecretName"] = "pgvector2-app"
-            updated_kb = AkamaiKnowledgeBase.from_spec(updated_spec)
-            mock_update.assert_called_once_with(
-                "team-demo", "lifecycle-test", updated_kb
-            )
+            async with ApiClient() as api:
+                custom_api = CustomObjectsApi(api)
+                await custom_api.create_namespaced_custom_object(
+                    **CUSTOM_API_ARGS,
+                    namespace=namespace,
+                    body=sample_cr,
+                )
+                await sleep(5)
+                if expect_call:
+                    mock_create.assert_called_once_with(
+                        namespace, "lifecycle-test", SAMPLE_KB_OBJECT
+                    )
+                else:
+                    mock_create.assert_not_called()
 
-            await custom_api.delete_namespaced_custom_object(
-                **CUSTOM_API_ARGS,
-                namespace="team-demo",
-                name="lifecycle-test",
-            )
-            await sleep(5)
-            mock_delete.assert_called_once_with(
-                "team-demo", "lifecycle-test", updated_kb
-            )
+                await custom_api.patch_namespaced_custom_object(
+                    **CUSTOM_API_ARGS,
+                    namespace=namespace,
+                    name="lifecycle-test",
+                    body=[
+                        {
+                            "op": "replace",
+                            "path": "/spec/indexing/dbSecretName",
+                            "value": "pgvector2-app",
+                        }
+                    ],
+                )
+                await sleep(5)
+                updated_spec = deepcopy(SAMPLE_KB_DICT)
+                updated_spec["indexing"]["dbSecretName"] = "pgvector2-app"
+                updated_kb = AkamaiKnowledgeBase.from_spec(updated_spec)
+                if expect_call:
+                    mock_update.assert_called_once_with(
+                        namespace, "lifecycle-test", updated_kb
+                    )
+                else:
+                    mock_update.assert_not_called()
+
+                await custom_api.delete_namespaced_custom_object(
+                    **CUSTOM_API_ARGS,
+                    namespace=namespace,
+                    name="lifecycle-test",
+                )
+                await sleep(5)
+                if expect_call:
+                    mock_delete.assert_called_once_with(
+                        namespace, "lifecycle-test", updated_kb
+                    )
+                else:
+                    mock_delete.assert_not_called()
 
     assert runner.exit_code == 0, runner.output
     assert runner.exception is None, runner.output
