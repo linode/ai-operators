@@ -14,11 +14,10 @@ from kubernetes_asyncio.client import ApiException, CustomObjectsApi, Apiextensi
 from kubernetes_asyncio.client.api_client import ApiClient
 
 from ml_operator.constants import CUSTOM_API_ARGS
-from tests.common import SAMPLE_KB_OBJECT
+from ml_operator.resource import AkamaiKnowledgeBase
+from .common import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
 _DIR = Path(__file__).parent
-with open(_DIR / "sample-spec.yaml", "r") as f:
-    _SPEC = yaml.safe_load(f)
 
 # All tests in this module only run if env variable USE_CLUSTER is set
 USE_CLUSTER = (var := os.getenv("USE_CLUSTER")) and var not in ("0", "false")
@@ -27,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def runner():
     """
     Kopf runner for operator tests. Must be used in a context, e.g.
@@ -50,7 +49,8 @@ async def k8s():
 @pytest.fixture(scope="module")
 async def crd(k8s):
     """
-    Sets up the CRD in the cluster for tests.
+    Sets up the CRD in the cluster for tests, and removes it after.
+    Also drops all related CRs.
     Note that it fails all dependent tests, if the CRD is not valid.
     """
     with open(_DIR / ".." / "chart/crds/crd.yaml", "r") as f:
@@ -63,6 +63,42 @@ async def crd(k8s):
         ext_api = ApiextensionsV1Api(api)
         await ext_api.create_custom_resource_definition(crd)
         yield
+
+        custom_api = CustomObjectsApi(api)
+        try:
+            all_crs = await custom_api.list_custom_object_for_all_namespaces(
+                group=CUSTOM_API_ARGS["group"],
+                version=CUSTOM_API_ARGS["version"],
+                resource_plural=CUSTOM_API_ARGS["plural"],
+            )
+        except ApiException as e:
+            if e.status == 404:
+                return
+            raise e
+        body = [{"op": "remove", "path": "/metadata/finalizers"}]
+        names = [
+            (resource["metadata"]["namespace"], resource["metadata"]["name"])
+            for resource in all_crs["items"]
+        ]
+        patches = [
+            custom_api.patch_namespaced_custom_object(
+                **CUSTOM_API_ARGS, namespace=namespace, name=name, body=body
+            )
+            for namespace, name in names
+        ]
+        try:
+            await asyncio.gather(*patches)
+        except ApiException as e:
+            if e.status != 422:
+                raise e
+        deletions = [
+            custom_api.delete_namespaced_custom_object(
+                **CUSTOM_API_ARGS, namespace=namespace, name=name
+            )
+            for namespace, name in names
+        ]
+        await asyncio.gather(*deletions)
+
         try:
             await ext_api.delete_custom_resource_definition(crd["metadata"]["name"])
         except ApiException as e:
@@ -81,49 +117,21 @@ def create_sample_cr(name: str) -> dict[str, Any]:
         "metadata": {
             "name": name,
         },
-        "spec": deepcopy(_SPEC),
+        "spec": deepcopy(SAMPLE_KB_DICT),
     }
 
 
-@pytest.fixture
-async def cleanup_crs():
-    yield
-    async with ApiClient() as api:
-        custom_api = CustomObjectsApi(api)
-        try:
-            all_crs = await custom_api.list_custom_object_for_all_namespaces(
-                group=CUSTOM_API_ARGS["group"],
-                version=CUSTOM_API_ARGS["group"],
-                resource_plural=CUSTOM_API_ARGS["plural"],
-            )
-        except ApiException as e:
-            if e.status == 404:
-                return
-            raise e
-        body = [{"op": "remove", "path": "/metadata/finalizers/0"}]
-        names = [
-            (resource["metadata"]["namespace"], resource["metadata"]["name"])
-            for resource in all_crs
-        ]
-        patches = [
-            custom_api.patch_namespaced_custom_object(
-                **CUSTOM_API_ARGS, namespace=namespace, name=name, body=body
-            )
-            for namespace, name in names
-        ]
-        await asyncio.gather(*patches)
-        deletions = [
-            custom_api.delete_namespaced_custom_object(
-                **CUSTOM_API_ARGS, namespace=namespace, name=name
-            )
-            for namespace, name in names
-        ]
-        await asyncio.gather(*deletions)
-
-
 @patch("ml_operator.main.HANDLER.created")
-async def test_creation(mock_create, crd: None, runner: KopfRunner, cleanup_crs: None):
-    sample_cr = create_sample_cr("test")
+@patch("ml_operator.main.HANDLER.updated")
+@patch("ml_operator.main.HANDLER.deleted")
+async def test_lifecycle(
+    mock_delete,
+    mock_update,
+    mock_create,
+    crd: None,
+    runner: KopfRunner,
+):
+    sample_cr = create_sample_cr("lifecycle-test")
     with runner:
         async with ApiClient() as api:
             custom_api = CustomObjectsApi(api)
@@ -132,8 +140,40 @@ async def test_creation(mock_create, crd: None, runner: KopfRunner, cleanup_crs:
                 namespace="team-demo",
                 body=sample_cr,
             )
-        await sleep(5)
-    mock_create.assert_called_with("team-demo", "test", SAMPLE_KB_OBJECT)
+            await sleep(5)
+            mock_create.assert_called_once_with(
+                "team-demo", "lifecycle-test", SAMPLE_KB_OBJECT
+            )
+
+            await custom_api.patch_namespaced_custom_object(
+                **CUSTOM_API_ARGS,
+                namespace="team-demo",
+                name="lifecycle-test",
+                body=[
+                    {
+                        "op": "replace",
+                        "path": "/spec/indexing/dbSecretName",
+                        "value": "pgvector2-app",
+                    }
+                ],
+            )
+            await sleep(5)
+            updated_spec = deepcopy(SAMPLE_KB_DICT)
+            updated_spec["indexing"]["dbSecretName"] = "pgvector2-app"
+            updated_kb = AkamaiKnowledgeBase.from_spec(updated_spec)
+            mock_update.assert_called_once_with(
+                "team-demo", "lifecycle-test", updated_kb
+            )
+
+            await custom_api.delete_namespaced_custom_object(
+                **CUSTOM_API_ARGS,
+                namespace="team-demo",
+                name="lifecycle-test",
+            )
+            await sleep(5)
+            mock_delete.assert_called_once_with(
+                "team-demo", "lifecycle-test", updated_kb
+            )
 
     assert runner.exit_code == 0, runner.output
     assert runner.exception is None, runner.output

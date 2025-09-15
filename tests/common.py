@@ -1,12 +1,20 @@
-from pathlib import Path
-
-import yaml
-
 from ml_operator.resource import AkamaiKnowledgeBase, KBData, KBIndexing
 
 # Global test objects, reused in tests
-with open(Path(__file__).parent / "sample-spec.yaml", "r") as f:
-    SAMPLE_KB_DICT = yaml.safe_load(f)
+SAMPLE_KB_DICT = {
+    "data": {"url": "https://example.com/kb-data"},
+    "indexing": {
+        "embeddingModelEndpoint": "model.model-namespace.svc.cluster.local",
+        "embeddingModelName": "e5-mistral-7b",
+        "embeddingDimension": 4096,
+        "embeddingPipeline": "pipeline",
+        "dbHostReadWrite": "pgvector-rw.team-demo.svc.cluster.local",
+        "dbHostRead": "pgvector-r.team-demo.svc.cluster.local",
+        "dbName": "app",
+        "dbPort": 5432,
+        "dbSecretName": "pgvector-app",
+    },
+}
 
 SAMPLE_KB_OBJECT = AkamaiKnowledgeBase(
     data=KBData(url="https://example.com/kb-data"),

@@ -40,7 +40,7 @@ async def created(spec, meta, logger, **_):
 async def updated(spec, meta, old, new, diff, logger, **_):
     logger.info(f"Detected updated resource {meta['name']}.")
     logger.debug(f"Spec: {spec}")
-    logger.debug(f"Spec: {diff}")
+    logger.debug(f"Diff: {diff}")
     await HANDLER.updated(
         meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
     )
