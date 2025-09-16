@@ -34,6 +34,7 @@ spec:
         command:
         - kopf
         - run
+        - -A
         - -m
         - ml_operator
         args:
@@ -49,7 +50,7 @@ spec:
         {{- else }}
         - --peering={{ .Values.operator.kopf.peeringName }}
         {{- end }}
-        -- --liveness=http://0.0.0.0:8080/healthz
+        - "--liveness=http://0.0.0.0:8080/healthz"
         env:
         - name: KOPF_LOG_FORMAT
           value: "json"

@@ -8,6 +8,7 @@ dependencies = [
     "attrs>=25.3.0",
     "cattrs>=25.2.0",
     "kopf[uvloop]>=1.38.0",
+    "kfp>=2.0.0",
 ]
 
 [dependency-groups]

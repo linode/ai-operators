@@ -3,11 +3,11 @@ import os
 import kopf
 
 from .constants import RESOURCE_NAME
-from .handler import Handler
+from .handlers import KnowledgeBaseHandler
 from .resource import AkamaiKnowledgeBase
 
 WATCHED_NAMESPACES = set()
-HANDLER = Handler()
+KB_HANDLER = KnowledgeBaseHandler()
 
 
 def matches_namespaces(meta, **_):
@@ -31,9 +31,11 @@ async def startup_fn(logger, **_):
 async def created(spec, meta, logger, **_):
     logger.info(f"Detected created resource {meta['name']}.")
     logger.debug(f"Spec: {spec}")
-    await HANDLER.created(
+
+    run_id = await KB_HANDLER.created(
         meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
     )
+    await KB_HANDLER.wait_for_completion(meta["namespace"], meta["name"], run_id)
 
 
 @kopf.on.update(RESOURCE_NAME, when=matches_namespaces)
@@ -41,15 +43,17 @@ async def updated(spec, meta, old, new, diff, logger, **_):
     logger.info(f"Detected updated resource {meta['name']}.")
     logger.debug(f"Spec: {spec}")
     logger.debug(f"Diff: {diff}")
-    await HANDLER.updated(
+
+    run_id = await KB_HANDLER.updated(
         meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
     )
+    await KB_HANDLER.wait_for_completion(meta["namespace"], meta["name"], run_id)
 
 
 @kopf.on.delete(RESOURCE_NAME, when=matches_namespaces)
 async def deleted(spec, meta, logger, **_):
     logger.info(f"Detected deleted resource {meta['name']}.")
     logger.debug(f"Spec: {spec}")
-    await HANDLER.deleted(
+    await KB_HANDLER.deleted(
         meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
     )

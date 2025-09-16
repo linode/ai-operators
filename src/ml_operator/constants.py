@@ -4,3 +4,4 @@ CUSTOM_API_ARGS = {
     "plural": "akamaiknowledgebases",
 }
 RESOURCE_NAME = f"{CUSTOM_API_ARGS['plural']}.{CUSTOM_API_ARGS['group']}"
+EMBED_BATCH_SIZE = 10

@@ -35,3 +35,8 @@ rules:
 - apiGroups: ["kopf.dev"]
   resources: ["clusterkopfpeerings", "kopfpeerings"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# CustomResourceDefinitions access for Kopf framework
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list", "watch"]
