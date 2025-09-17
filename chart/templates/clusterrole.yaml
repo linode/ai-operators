@@ -8,7 +8,7 @@ rules:
 # Watch and manage AkamaiKnowledgeBase custom resources
 - apiGroups: ["akamai.io"]
   resources: ["akamaiknowledgebases"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "patch"]
 - apiGroups: ["akamai.io"]
   resources: ["akamaiknowledgebases/status"]
   verbs: ["get", "update", "patch"]

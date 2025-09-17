@@ -117,19 +117,15 @@ def mock_doc_ingest_pipeline(
 
 
 def upload_test_pipeline(kfp_endpoint: str, pipeline_name: str = "mock-doc-ingest-pipeline"):
-    """Upload the test pipeline to Kubeflow Pipelines"""
     from kfp import Client
-    import time
 
     print(f"Connecting to Kubeflow Pipelines at: {kfp_endpoint}")
     client = Client(host=kfp_endpoint)
 
-    # Try to get existing pipeline
     try:
         existing_pipeline = client.get_pipeline(pipeline_name)
         print(f"Found existing pipeline: {existing_pipeline.pipeline_id}")
 
-        # Upload new version using pipeline function directly
         version_upload = client.upload_pipeline_version_from_pipeline_func(
             pipeline_func=mock_doc_ingest_pipeline,
             pipeline_id=existing_pipeline.pipeline_id,
@@ -140,7 +136,6 @@ def upload_test_pipeline(kfp_endpoint: str, pipeline_name: str = "mock-doc-inges
         print(f"Version Name: {version_upload.display_name}")
 
     except Exception:
-        # Pipeline doesn't exist, create new one
         print("Pipeline doesn't exist, creating new one...")
         pipeline_upload = client.upload_pipeline_from_pipeline_func(
             pipeline_func=mock_doc_ingest_pipeline,
@@ -148,18 +143,14 @@ def upload_test_pipeline(kfp_endpoint: str, pipeline_name: str = "mock-doc-inges
             description="Mock document ingestion pipeline for ML-Operator testing"
         )
 
-        print(f"✅ Pipeline uploaded successfully!")
-        print(f"Pipeline ID: {pipeline_upload.pipeline_id}")
-        print(f"Pipeline Name: {pipeline_upload.display_name}")
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     kfp_endpoint = "http://localhost:3000"  # os.getenv("KUBEFLOW_ENDPOINT")
     if not kfp_endpoint:
-        print("❌ KUBEFLOW_ENDPOINT environment variable not set")
+        print("KUBEFLOW_ENDPOINT environment variable not set")
         print("Set it with: export KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local")
         sys.exit(1)
 

@@ -94,6 +94,8 @@ helm install cnpg cnpg/cloudnative-pg \
 echo "🔢 Installing PostgreSQL cluster with pgvector..."
 helm install pgvector-cluster /tmp/apl-charts/pgvector-cluster \
   --namespace team-kb \
+  --set imageName=ghcr.io/cloudnative-pg/postgresql:17.5 \
+  --set apl.networkpolicies.create=false \
   --wait \
   --timeout=10m
 

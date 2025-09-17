@@ -34,9 +34,8 @@ spec:
         command:
         - kopf
         - run
-        - -A
         - -m
-        - ml_operator
+        - ml_operator.main
         args:
         - --all-namespaces
         {{- if .Values.operator.kopf.verbose }}
@@ -45,7 +44,7 @@ spec:
         {{- with .Values.operator.logFormat }}
         - --log-format={{ . | quote }}
         {{- end }}
-        {{- if eq .Values.replicas 1 }}
+        {{- if eq (int .Values.replicaCount) 1 }}
         - --standalone
         {{- else }}
         - --peering={{ .Values.operator.kopf.peeringName }}

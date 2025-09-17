@@ -20,6 +20,28 @@ class KubeflowPipelinesService:
             self.client = Client(host=self.kubeflow_endpoint)
         return self.client
 
+    def _get_or_create_experiment(self, name: str) -> str:
+        client = self._get_client()
+        """This function checks if an experiment exists, and creates it if not."""
+        experiment = client.create_experiment(
+            name=name,
+            description=f"ML-Operator experiment for knowledge base {name}"
+        )
+        return experiment.experiment_id
+
+    def _get_latest_pipeline_version(self, pipeline_id, pipeline_name):
+        client = self._get_client()
+        """Same fetch is used in kfp UI page_size=1&sort_by=created_at%20desc"""
+        versions = client.list_pipeline_versions(
+            pipeline_id=pipeline_id,
+            page_size=1,
+            sort_by="created_at desc"
+        )
+        if not versions.pipeline_versions:
+            raise ValueError(f"No versions found for pipeline '{pipeline_name}'")
+        version_id = versions.pipeline_versions[0].pipeline_version_id
+        return version_id
+
     def run_pipeline(self, namespace: str, name: str, kb: AkamaiKnowledgeBase) -> str:
         client = self._get_client()
 
@@ -27,10 +49,13 @@ class KubeflowPipelinesService:
         if not pipeline_name:
             raise ValueError(f"No embedding pipeline specified for knowledge base {name}")
 
-        # Get pipeline ID from pipeline name
         pipeline_id = client.get_pipeline_id(pipeline_name)
         if not pipeline_id:
             raise ValueError(f"Pipeline '{pipeline_name}' not found in Kubeflow")
+
+        version_id = self._get_latest_pipeline_version(pipeline_id, pipeline_name)
+
+        experiment_id = self._get_or_create_experiment(name)
 
         parameters = {
             "url": kb.data.url,
@@ -45,8 +70,10 @@ class KubeflowPipelinesService:
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_result = client.run_pipeline(
+            experiment_id=experiment_id,
             job_name=f"{name}-{namespace}-{timestamp}",
             pipeline_id=pipeline_id,
+            version_id=version_id,
             params=parameters
         )
 
