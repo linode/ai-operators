@@ -31,7 +31,7 @@ class KubeflowPipelinesService:
 
     def _get_latest_pipeline_version(self, pipeline_id, pipeline_name):
         client = self._get_client()
-        """Same fetch is used in kfp UI page_size=1&sort_by=created_at%20desc"""
+        """Same fetch is used in kfp UI (page_size=1&sort_by=created_at%20desc)"""
         versions = client.list_pipeline_versions(
             pipeline_id=pipeline_id,
             page_size=1,
