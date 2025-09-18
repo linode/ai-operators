@@ -6,10 +6,29 @@ from typing import Iterable
 
 import pytest
 from kfp.dsl.base_component import BaseComponent
+from kubernetes_asyncio.client import V1ConfigMap
 
+from ml_operator.pipelines.config import PipelineConfigLoader, PipelineRepoConfig
 from ml_operator.pipelines.repo_manager import Repo, RepoManager, RepoInvalidRef
 from ml_operator.pipelines import extractor
+from ml_operator.pipelines.updater import PipelineUpdater
 from ml_operator.pipelines.uploader import PipelineUploader
+
+
+async def test_config(mocker):
+    mock_core_api = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
+        return_value=V1ConfigMap(
+            data={"repositories": {"default": {"url": "<test-url>"}}}
+        ),
+    )
+    config_loader = PipelineConfigLoader()
+    assert config_loader.get_config() == {}
+    await config_loader.update_config()
+    mock_core_api.assert_called_once_with("pipelines", "ml-operator")
+    assert config_loader.get_config() == {
+        "default": PipelineRepoConfig("<test-url>", None)
+    }
 
 
 @pytest.fixture
@@ -193,3 +212,26 @@ def test_uploader(mocker):
     client_mock.upload_pipeline_version_from_pipeline_func.assert_called_once_with(
         dummy_func, "0.1.0", pipeline_name="pipeline", description="Description"
     )
+
+
+async def test_updater(mocker, remote_repo: Repo, temp_dir: str):
+    repo_dir = Path(temp_dir) / "default"
+    manager = RepoManager("url", repo_dir)
+    manager.init_repo()
+    add_repo_files(
+        remote_repo,
+        [
+            ("test_pipeline.py", PIPELINE_SCRIPT),
+        ],
+        commit_msg="Added files.",
+    )
+    config_loader = PipelineConfigLoader()
+    mocker.patch.object(
+        config_loader, "get_config", return_value={"default": PipelineRepoConfig("url")}
+    )
+    updater = PipelineUpdater(temp_dir, config_loader)
+    mock_upload = mocker.patch.object(updater._uploader, "upload")
+    await updater.run()
+    mock_upload.assert_called_once()
+    assert isinstance(mock_upload.call_args.args[0], BaseComponent)
+    assert mock_upload.call_args.args[1:] == ("test-pipeline", "0.1.0")

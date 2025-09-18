@@ -23,7 +23,9 @@ aiohttp==3.12.15 \
     --hash=sha256:b97752ff12cc12f46a9b20327104448042fce5c33a624f88c18f66f9368091c7 \
     --hash=sha256:f0fa751efb11a541f57db59c1dd821bec09031e01452b2b6217319b3a1f34f3d \
     --hash=sha256:f813c3e9032331024de2eb2e32a88d86afb69291fbc37a3a3ae81cc9917fb3d0
-    # via kopf
+    # via
+    #   kopf
+    #   kubernetes-asyncio
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
     --hash=sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7
@@ -49,6 +51,7 @@ certifi==2025.8.3 \
     # via
     #   kfp-server-api
     #   kubernetes
+    #   kubernetes-asyncio
     #   requests
 charset-normalizer==3.4.3 \
     --hash=sha256:14c2a87c65b351109f6abfc424cab3927b3bdece6f706e4d12faaf3d52ee5efe \
@@ -216,6 +219,10 @@ kubernetes==30.1.0 \
     --hash=sha256:41e4c77af9f28e7a6c314e3bd06a8c6229ddd787cad684e0ab9f69b498e98ebc \
     --hash=sha256:e212e8b7579031dd2e512168b617373bc1e03888d41ac4e04039240a292d478d
     # via kfp
+kubernetes-asyncio==33.3.0 \
+    --hash=sha256:25e6e265932ebb1aeecbdb30a107dbef3ee0bcd388ed12d092be70915733982b \
+    --hash=sha256:4c59cd4c99b197995ef38ef0c8ff45aab24b84830ebf0ddcb67355caea9674c9
+    # via ml-operator
 multidict==6.6.4 \
     --hash=sha256:024ce601f92d780ca1617ad4be5ac15b501cc2414970ffa2bb2bbc2bd5a68fa5 \
     --hash=sha256:0e0558693063c75f3d952abf645c78f3c5dfdd825a41d8c4d8156fc0b0da6e7e \
@@ -336,6 +343,7 @@ python-dateutil==2.9.0.post0 \
     # via
     #   kfp-server-api
     #   kubernetes
+    #   kubernetes-asyncio
 python-json-logger==3.3.0 \
     --hash=sha256:12b7e74b17775e7d565129296105bbe3910842d9d0eb083fc83a6a617aa8df84 \
     --hash=sha256:dd980fae8cffb24c13caf6e158d3d61c0d6d22342f932cb6e9deedab3d35eec7
@@ -355,6 +363,7 @@ pyyaml==6.0.2 \
     #   kfp
     #   kopf
     #   kubernetes
+    #   kubernetes-asyncio
 requests==2.32.5 \
     --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
     --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
@@ -372,10 +381,6 @@ requests-toolbelt==1.0.0 \
     --hash=sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6 \
     --hash=sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06
     # via kfp
-restrictedpython==8.0 \
-    --hash=sha256:3af2312bc67e5fced887fb85b006c89861da72488128b155beea81eb6a0a9b24 \
-    --hash=sha256:ed3d894efd7d6cac0a5f13f75583b8458378d400d7dd4c083b59233eba85fe69
-    # via ml-operator
 rsa==4.9.1 \
     --hash=sha256:68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762 \
     --hash=sha256:e7bdbfdb5497da4c07dfd35530e1a902659db6ff241e39d9953cad06ebd0ae75
@@ -386,6 +391,7 @@ six==1.17.0 \
     # via
     #   kfp-server-api
     #   kubernetes
+    #   kubernetes-asyncio
     #   python-dateutil
 smmap==5.0.2 \
     --hash=sha256:26ea65a03958fa0c8a1c7e8c7a58fdc77221b8910f6be2131affade476898ad5 \
@@ -406,6 +412,7 @@ urllib3==2.5.0 \
     #   kfp
     #   kfp-server-api
     #   kubernetes
+    #   kubernetes-asyncio
     #   requests
 uvloop==0.21.0 \
     --hash=sha256:3bf12b0fda68447806a7ad847bfa591613177275d35b6724b1ee573faa3704e3 \
