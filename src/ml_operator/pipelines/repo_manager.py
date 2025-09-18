@@ -25,17 +25,30 @@ def _get_files(root_path: Path, tree: Tree) -> list[Path]:
 
 
 class RepoInvalidRef(Exception):
+    """
+    Reference is not found in repository.
+    """
+
     pass
 
 
 class RepoManager:
+    """
+    Manages a copy of a remote repository, detecting incremental updates.
+    """
+
     def __init__(self, repo_url: str, repo_local: str | Path, ref: str = "main"):
         self._repo_url = repo_url
         self._repo_local = Path(repo_local)
         self._repo: Repo | None = None
-        self._target_ref = ref
+        self._target_ref = ref or "main"
 
     def init_repo(self) -> list[Path]:
+        """
+        Initializes the local repository copy.
+
+        If the local directory exists, it is removed.
+        """
         logger.info(f"Initializing repository at {self._repo_local}.")
         self._repo = None
         if not self._repo_local.parent.exists():
@@ -53,16 +66,25 @@ class RepoManager:
         return _get_files(Path(repo.working_dir), repo.head.commit.tree)
 
     def update_repo(self) -> list[Path]:
+        """
+        Performs an incremental update of the repository and returns
+        paths to all updated files.
+
+        If that fails, or the repository has not been initialized,
+        starts with a fresh clone of the remote repository.
+        """
         if not self._repo_local.exists():
             return self.init_repo()
+        else:
+            self._repo = Repo(self._repo_local)
         if self._repo.is_dirty():
             logger.info("Resetting repository.")
             self._repo.head.reset(f"origin/{self._target_ref}", working_tree=True)
         origin = self._repo.remotes.origin
-        logger.info("Fetching changes.")
+        logger.debug("Fetching changes.")
         fetch_info = origin.fetch()[0]
         if self._repo.head.ref == fetch_info.ref:
-            logger.info("No changes detected.")
+            logger.debug("No changes detected.")
             return []
         else:
             old_commit = self._repo.head.commit

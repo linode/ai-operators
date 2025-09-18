@@ -24,6 +24,9 @@ class PipelineUploader:
         version: str = "1.0.0",
         description: str | None = None,
     ) -> V2beta1PipelineVersion:
+        """
+        Performs the upload of a single pipeline function.
+        """
         return self._get_client().upload_pipeline_version_from_pipeline_func(
             pipeline_func,
             version,

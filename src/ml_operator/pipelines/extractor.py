@@ -24,17 +24,24 @@ def load_module(file_path: Path) -> ModuleType:
     parent_dir = str(file_path.parent)
     module_name = file_path.name.removesuffix(".py")
     logger.info(f"Loading module {module_name}.")
-    sys.path.append(parent_dir)
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
     try:
-        module = import_module(module_name)
+        return import_module(module_name)
     finally:
-        sys.path.remove(parent_dir)
-    return module
+        try:
+            sys.path.remove(parent_dir)
+        except ValueError:
+            pass
 
 
 def get_pipeline_items(
     paths: Iterable[Path], match_pattern="**/*.py"
 ) -> Generator[PipelineVersion]:
+    """
+    Retrieves all pipelines found in the selected paths, matched
+    with the patterns.
+    """
     for path in paths:
         if path.match(match_pattern):
             logger.debug(f"Processing {path}")
