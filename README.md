@@ -152,7 +152,7 @@ kubectl wait --for=condition=Ready pods --all -n team-kb --timeout=600s
 kubectl port-forward -n kfp service/ml-pipeline 3000:80 &
 
 # Upload the test pipeline
-python tests/resources/test-pipeline.py
+python tests/resources/upload-pipeline.py
 ```
 
 **12. Build and deploy ML-Operator**

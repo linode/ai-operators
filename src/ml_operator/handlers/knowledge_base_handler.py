@@ -31,7 +31,9 @@ class KnowledgeBaseHandler:
         self.logger.info(f"Knowledge base {name} in namespace {namespace} deleted")
 
         # Future: Add cleanup logic here
-        # - Stop running pipeline if it is running
+        # - Stop running a pipeline if it is running
+        # - Archive pipeline and experiments in kubeflow pipelines
+        # - Delete table from a pgvector database?
         pass
 
     # TODO check if this does not exhaust memory and connection pool on high load and long waits
