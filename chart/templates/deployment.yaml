@@ -35,7 +35,7 @@ spec:
         - kopf
         - run
         - -m
-        - ml_operator
+        - ml_operator.main
         args:
         - --all-namespaces
         {{- if .Values.operator.kopf.verbose }}
@@ -44,12 +44,12 @@ spec:
         {{- with .Values.operator.logFormat }}
         - --log-format={{ . | quote }}
         {{- end }}
-        {{- if eq .Values.replicas 1 }}
+        {{- if eq (int .Values.replicaCount) 1 }}
         - --standalone
         {{- else }}
         - --peering={{ .Values.operator.kopf.peeringName }}
         {{- end }}
-        -- --liveness=http://0.0.0.0:8080/healthz
+        - "--liveness=http://0.0.0.0:8080/healthz"
         env:
         - name: KOPF_LOG_FORMAT
           value: "json"

@@ -1,0 +1,17 @@
+apiVersion: akamai.io/v1alpha1
+kind: AkamaiKnowledgeBase
+metadata:
+  name: example-kb
+  namespace: team-kb
+spec:
+  data:
+    url: "https://docs.example.com/api"
+  indexing:
+    embeddingModelEndpoint: "https://api.openai.com/v1"
+    embeddingModelName: "text-embedding-3-small"
+    embeddingDimension: 1536
+    embeddingPipeline: "mock-doc-ingest-pipeline"
+    dbHostReadWrite: "pgvector-cluster-rw"
+    dbName: "app"
+    dbPort: 5432
+    dbSecretName: "pgvector-cluster-app"
