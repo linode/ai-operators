@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 @define
-class PipelineRepoConfig:
+class PipelineSourceConfig:
     url: str
-    ref: str | None = None
+    version: str | None = None
 
     @classmethod
-    def from_dict(cls, input: dict[str, str]) -> "PipelineRepoConfig":
+    def from_dict(cls, input: dict[str, str]) -> "PipelineSourceConfig":
         return converter.structure(input, cls)
 
 
@@ -37,7 +37,7 @@ class PipelineConfigLoader:
 
     def __init__(self):
         self._namespace = os.getenv("NAMESPACE") or "ml-operator"
-        self._current_config: dict[str, PipelineRepoConfig] = {}
+        self._current_config: dict[str, PipelineSourceConfig] = {}
 
     async def _load_config(self) -> dict[str, Any]:
         async with ApiClient() as api:
@@ -50,7 +50,7 @@ class PipelineConfigLoader:
                 if e.status == 404:
                     logger.info("No pipeline configuration set.")
                     return {}
-        return configmap.data.get("repositories") or {}
+        return configmap.data or {}
 
     async def update_config(self):
         """
@@ -59,7 +59,7 @@ class PipelineConfigLoader:
         loaded_config = await self._load_config()
         for name, config_dict in loaded_config.items():
             try:
-                config = PipelineRepoConfig.from_dict(config_dict)
+                config = PipelineSourceConfig.from_dict(config_dict)
             except (BaseValidationError, KeyError) as e:
                 logger.warning(f"Invalid pipeline configuration for '{name}'.")
                 logger.error(e)
@@ -69,7 +69,7 @@ class PipelineConfigLoader:
         for name in discarded_names:
             del self._current_config[name]
 
-    def get_config(self) -> dict[str, PipelineRepoConfig]:
+    def get_config(self) -> dict[str, PipelineSourceConfig]:
         """
         Returns the last set of configurations retrieved.
         """
