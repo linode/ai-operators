@@ -5,9 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp[speedups]>=3.12.15",
     "attrs>=25.3.0",
     "cattrs>=25.2.0",
-    "gitpython>=3.1.45",
     "kfp>=2.14.3",
     "kopf[uvloop]>=1.38.0",
     "kubernetes-asyncio>=33.3.0",
@@ -15,6 +15,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "aioresponses>=0.7.8",
     "poethepoet>=0.37.0",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",

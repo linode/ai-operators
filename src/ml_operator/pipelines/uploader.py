@@ -1,5 +1,4 @@
 from kfp import Client
-from kfp.dsl.base_component import BaseComponent
 from kfp_server_api import V2beta1PipelineVersion
 
 
@@ -19,17 +18,19 @@ class PipelineUploader:
 
     def upload(
         self,
-        pipeline_func: BaseComponent,
-        name: str,
+        package_path: str,
+        version_name: str,
+        pipeline_name: str = None,
         version: str = "1.0.0",
         description: str | None = None,
     ) -> V2beta1PipelineVersion:
         """
-        Performs the upload of a single pipeline function.
+        Performs the upload of a single pipeline package.
         """
-        return self._get_client().upload_pipeline_version_from_pipeline_func(
-            pipeline_func,
+        return self._get_client().upload_pipeline_version(
+            package_path,
+            version_name,
             version,
-            pipeline_name=name,
+            pipeline_name=pipeline_name,
             description=description,
         )
