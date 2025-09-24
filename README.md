@@ -132,9 +132,12 @@ kubectl label secret mlpipeline-minio-artifact app=kubeflow-pipelines -n kfp
 ```bash
 helm install kubeflow-pipelines /tmp/apl-core/charts/kubeflow-pipelines \
   --namespace kfp \
-  --set objectStorage.endpoint=minio.kfp.svc.cluster.local:9000 \
+  --set objectStorage.endpoint=minio.kfp.svc.cluster.local \
   --set objectStorage.bucket=kubeflow-pipelines \
   --set objectStorage.region=us-east-1 \
+  --set objectStorage.port=9000 \
+  --set objectStorage.secure=false \
+  --set objectStorage.type=minio \
   --wait \
   --timeout=10m
 ```
@@ -216,4 +219,3 @@ kubectl logs -l app.kubernetes.io/name=akamai-ml-operator -f
 # Delete the Kind cluster
 kind delete cluster --name ml-operator-test
 ```
-
