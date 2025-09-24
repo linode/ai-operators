@@ -127,9 +127,8 @@ class PipelineDownloader:
     ) -> PipelineFileResponse:
         self._verify_content_length(response.headers)
         if response.headers.get("Content-Type", "").endswith("zip"):
-            with tempfile.TemporaryFile("wb") as file:
+            with tempfile.TemporaryFile("+xb") as file:
                 await self._download_content(file, response.content)
-                file.seek(0)
                 names = _extract_files(path_prefix, file)
         else:
             if response.content_disposition and response.content_disposition.filename:

@@ -220,9 +220,12 @@ async def test_get_zip_file(mock_response, client):
     Verifies zipped file retrieval.
     """
     buffer = BytesIO()
-    with NamedTemporaryFile("wt") as temp_file, ZipFile(buffer, "w") as zf:
+    with (
+        NamedTemporaryFile("wt", suffix=".yaml") as temp_file,
+        ZipFile(buffer, "w") as zf,
+    ):
         temp_file.write("test-content")
-        zf.write(temp_file.name)
+        zf.write(temp_file.name, arcname="pipeline.yaml")
     mock_response.get(
         TEST_URL,
         status=200,
