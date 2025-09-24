@@ -16,7 +16,9 @@ class KubeflowPipelinesService:
     def _get_client(self) -> Client:
         if not self.client:
             if not self.kubeflow_endpoint:
-                raise ValueError("Kubeflow endpoint not configured. Set KUBEFLOW_ENDPOINT environment variable.")
+                raise ValueError(
+                    "Kubeflow endpoint not configured. Set KUBEFLOW_ENDPOINT environment variable."
+                )
             self.client = Client(host=self.kubeflow_endpoint)
         return self.client
 
@@ -24,8 +26,7 @@ class KubeflowPipelinesService:
         client = self._get_client()
         """This function checks if an experiment exists, and creates it if not."""
         experiment = client.create_experiment(
-            name=name,
-            description=f"ML-Operator experiment for knowledge base {name}"
+            name=name, description=f"ML-Operator experiment for knowledge base {name}"
         )
         return experiment.experiment_id
 
@@ -33,9 +34,7 @@ class KubeflowPipelinesService:
         client = self._get_client()
         """Same fetch is used in kfp UI (page_size=1&sort_by=created_at%20desc)"""
         versions = client.list_pipeline_versions(
-            pipeline_id=pipeline_id,
-            page_size=1,
-            sort_by="created_at desc"
+            pipeline_id=pipeline_id, page_size=1, sort_by="created_at desc"
         )
         if not versions.pipeline_versions:
             raise ValueError(f"No versions found for pipeline '{pipeline_name}'")
@@ -47,7 +46,9 @@ class KubeflowPipelinesService:
 
         pipeline_name = kb.indexing.embedding_pipeline
         if not pipeline_name:
-            raise ValueError(f"No embedding pipeline specified for knowledge base {name}")
+            raise ValueError(
+                f"No embedding pipeline specified for knowledge base {name}"
+            )
 
         pipeline_id = client.get_pipeline_id(pipeline_name)
         if not pipeline_id:
@@ -74,7 +75,7 @@ class KubeflowPipelinesService:
             job_name=f"{name}-{namespace}-{timestamp}",
             pipeline_id=pipeline_id,
             version_id=version_id,
-            params=parameters
+            params=parameters,
         )
 
         return run_result.run_id
@@ -86,5 +87,5 @@ class KubeflowPipelinesService:
             "id": run.run_id,
             "details": run.run_details,
             "created_at": run.created_at,
-            "finished_at": run.finished_at
+            "finished_at": run.finished_at,
         }
