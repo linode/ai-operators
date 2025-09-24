@@ -1,10 +1,17 @@
 import logging
 import tempfile
+from codecs import StreamReader
 from pathlib import Path
 from typing import IO
 from zipfile import ZipFile
 
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientResponse
+from aiohttp import (
+    ClientSession,
+    ClientTimeout,
+    TCPConnector,
+    ClientResponse,
+    ThreadedResolver,
+)
 from attrs import define
 
 
@@ -73,19 +80,22 @@ class PipelineDownloader:
 
     def _get_session(self) -> ClientSession:
         timeout = ClientTimeout(total=self._config.timeout)
+        # AsyncResolver does not support mDNS
+        resolver = ThreadedResolver()
         connector = TCPConnector(
             limit=self._config.max_connections,
             limit_per_host=self._config.max_connections_per_host,
+            resolver=resolver,
         )
         return ClientSession(timeout=timeout, connector=connector)
 
-    def __enter__(self):
+    async def __aenter__(self):
         self._session = self._get_session()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._session:
-            self._session.close()
+            await self._session.close()
             self._session = None
 
     def _verify_content_length(self, headers: dict[str, str]) -> int | None:
@@ -102,33 +112,33 @@ class PipelineDownloader:
         # Do not fail yet, if header was invalid
         return None
 
+    async def _download_content(self, io: IO[bytes], content: StreamReader) -> None:
+        read_total = 0
+        async for chunk in content.iter_chunked(self._config.chunk_size):
+            read_total += len(chunk)
+            if read_total > self._config.max_size:
+                raise SizeExceededException(
+                    f"Processed file size {read_total} exceeds limit ({self._config.max_size})."
+                )
+            io.write(chunk)
+
     async def _process_response(
         self, response: ClientResponse, path_prefix: Path
     ) -> PipelineFileResponse:
         self._verify_content_length(response.headers)
-        read_total = 0
-        is_zip = response.content_type.endswith("zip")
-        if is_zip:
-            file_path = None
-            file = tempfile.TemporaryFile("wb")
+        if response.headers.get("Content-Type", "").endswith("zip"):
+            with tempfile.TemporaryFile("wb") as file:
+                await self._download_content(file, response.content)
+                file.seek(0)
+                names = _extract_files(path_prefix, file)
         else:
             if response.content_disposition and response.content_disposition.filename:
-                file_path = path_prefix / (response.content_disposition.filename)
+                file_path = path_prefix / response.content_disposition.filename
             else:
                 file_path = path_prefix / "pipeline.yaml"
-            file = file_path.open("wb")
-        with file:
-            async for chunk in response.content.iter_chunked(self._config.chunk_size):
-                read_total += len(chunk)
-                if read_total > self._config.max_size:
-                    raise SizeExceededException(
-                        f"Processed file size {read_total} exceeds limit ({self._config.max_size})."
-                    )
-                file.write(chunk)
-            if is_zip:
-                names = _extract_files(path_prefix, file)
-            else:
-                names = [file_path]
+            with file_path.open("wb") as file:
+                await self._download_content(file, response.content)
+            names = [file_path]
 
         return PipelineFileResponse(
             names,

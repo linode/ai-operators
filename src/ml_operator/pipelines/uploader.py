@@ -1,5 +1,10 @@
+import logging
+
 from kfp import Client
 from kfp_server_api import V2beta1PipelineVersion
+from kubernetes_asyncio.client import ApiException
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineUploader:
@@ -27,10 +32,13 @@ class PipelineUploader:
         """
         Performs the upload of a single pipeline package.
         """
-        return self._get_client().upload_pipeline_version(
-            package_path,
-            version_name,
-            version,
-            pipeline_name=pipeline_name,
-            description=description,
-        )
+        try:
+            return self._get_client().upload_pipeline_version(
+                package_path,
+                version_name,
+                version,
+                pipeline_name=pipeline_name,
+                description=description,
+            )
+        except ApiException as e:
+            logger.error(f"Error uploading pipeline '{version_name}'", exc_info=e)

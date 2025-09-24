@@ -1,9 +1,10 @@
 import logging
-from pathlib import Path
 
-from .config import PipelineConfigLoader, PipelineSourceConfig
-from .downloader import PipelineDownloader, PipelineDownloadConfig, PipelineFileResponse
+from .config import PipelineSourceConfig
+from .downloader import PipelineDownloader, PipelineFileResponse
 from .uploader import PipelineUploader
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineUpdater:
@@ -11,14 +12,13 @@ class PipelineUpdater:
     Performs the entire cycle of updating all configured files to uploading pipelines.
     """
 
-    def __init__(self, local_root: str | Path, config_loader: PipelineConfigLoader):
-        self._local_root = local_root
-        self._downloader = PipelineDownloader(PipelineDownloadConfig(local_root))
+    def __init__(self):
         self._uploader = PipelineUploader()
-        self._config_loader = config_loader
         self._response_cache: dict[str, PipelineFileResponse] = {}
 
-    async def update_repo(self, name: str, config: PipelineSourceConfig):
+    async def update_source(
+        self, downloader: PipelineDownloader, name: str, config: PipelineSourceConfig
+    ):
         """
         Updates a single configured link, and uploads all (new) pipelines found.
         """
@@ -26,12 +26,14 @@ class PipelineUpdater:
         if last_response := self._response_cache.get(name):
             kwargs["etag"] = last_response.etag
             kwargs["last_modified"] = last_response.last_modified
-        is_updated, response = await self._downloader.get_pipeline_files(
+        logger.debug(f"Checking on pipeline source updates for '{name}'")
+        is_updated, response = await downloader.get_pipeline_files(
             name, config.url, **kwargs
         )  # type: bool, PipelineFileResponse
         if is_updated:
             has_multiple = len(response.file_paths) > 1
             version = config.version or "1.0.0"
+            logger.debug(f"Processing files: {response.file_paths}")
             if has_multiple:
                 for file_path in response.file_paths:
                     self._uploader.upload(
@@ -45,13 +47,16 @@ class PipelineUpdater:
                 )
             self._response_cache = response
 
-    async def run(self):
+    async def run(
+        self, config: dict[str, PipelineSourceConfig], downloader: PipelineDownloader
+    ):
         """
         Triggers an update cycle over all configured urls.
         """
-        config = self._config_loader.get_config()
-        for repo_name, repo_config in config.items():
+        for source_name, source_config in config.items():
             try:
-                await self.update_repo(repo_name, repo_config)
+                await self.update_source(downloader, source_name, source_config)
             except Exception as e:
-                logging.error(e)
+                logger.error(
+                    f"Error updating pipeline source '{source_name}'", exc_info=e
+                )

@@ -33,7 +33,9 @@ async def test_config(mocker):
     """
     mock_core_api = mocker.patch(
         "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
-        return_value=V1ConfigMap(data={"default": {"url": "<test-url>"}}),
+        mocker.AsyncMock(
+            return_value=V1ConfigMap(data={"default": '{"url": "<test-url>"}'})
+        ),
     )
     config_loader = PipelineConfigLoader()
     assert config_loader.get_config() == {}
@@ -126,56 +128,42 @@ def test_uploader(mocker, compiled_pipeline: str):
     )
 
 
-async def test_updater(mocker, compiled_pipeline: str, temp_dir: str):
+async def test_updater(mocker, compiled_pipeline: str):
     """
     Verify entire update cycle.
     """
-    config_loader = PipelineConfigLoader()
-    mocker.patch.object(
-        config_loader,
-        "get_config",
-        return_value={"default": PipelineSourceConfig("url")},
-    )
-    updater = PipelineUpdater(temp_dir, config_loader)
-    mock_download = mocker.patch.object(
-        updater._downloader,
-        "get_pipeline_files",
+    mock_downloader = mocker.Mock()
+    mock_downloader.get_pipeline_files = mocker.AsyncMock(
         return_value=(
             True,
             PipelineFileResponse([Path(compiled_pipeline)], "etag", "last-modified"),
         ),
     )
+    updater = PipelineUpdater()
     mock_upload = mocker.patch.object(updater._uploader, "upload")
-    await updater.run()
-    mock_download.assert_called_once_with("default", "url")
+    await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
+    mock_downloader.get_pipeline_files.assert_called_once_with("default", "url")
     mock_upload.assert_called_once_with(compiled_pipeline, "default 1.0.0", None)
 
 
-async def test_updater_skip(mocker, temp_dir):
+async def test_updater_skip(mocker):
     """
     Verify that only updated packages are being resubmitted.
     """
-    config_loader = PipelineConfigLoader()
-    mocker.patch.object(
-        config_loader,
-        "get_config",
-        return_value={"default": PipelineSourceConfig("url")},
-    )
-    updater = PipelineUpdater(temp_dir, config_loader)
-    updater._response_cache = {
-        "default": PipelineFileResponse([], "etag", "last-modified")
-    }
-    mock_download = mocker.patch.object(
-        updater._downloader,
-        "get_pipeline_files",
+    mock_downloader = mocker.Mock()
+    mock_downloader.get_pipeline_files = mocker.AsyncMock(
         return_value=(
             False,
             None,
         ),
     )
+    updater = PipelineUpdater()
+    updater._response_cache = {
+        "default": PipelineFileResponse([], "etag", "last-modified")
+    }
     mock_upload = mocker.patch.object(updater._uploader, "upload")
-    await updater.run()
-    mock_download.assert_called_once_with(
+    await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
+    mock_downloader.get_pipeline_files.assert_called_once_with(
         "default", "url", etag="etag", last_modified="last-modified"
     )
     mock_upload.assert_not_called()
@@ -198,17 +186,15 @@ async def client():
     """
     Provides a configured pipeline downloader.
     """
-    with (
-        tempfile.TemporaryDirectory() as temp_dir,
-        PipelineDownloader(
+    with tempfile.TemporaryDirectory() as temp_dir:
+        async with PipelineDownloader(
             PipelineDownloadConfig(
                 local_path=temp_dir,
                 max_size=1024,
                 chunk_size=256,
             ),
-        ) as observer,
-    ):
-        yield observer
+        ) as observer:
+            yield observer
 
 
 async def test_get_file(mock_response, client):
@@ -232,8 +218,6 @@ async def test_get_file(mock_response, client):
 async def test_get_zip_file(mock_response, client):
     """
     Verifies zipped file retrieval.
-
-    NOTE: Currently cannot be done it tests, possible due to limitaitons of mock.
     """
     buffer = BytesIO()
     with NamedTemporaryFile("wt") as temp_file, ZipFile(buffer, "w") as zf:
@@ -243,7 +227,11 @@ async def test_get_zip_file(mock_response, client):
         TEST_URL,
         status=200,
         body=buffer.getvalue(),
-        headers={"ETag": "etag", "Last-Modified": "last-modified"},
+        headers={
+            "ETag": "etag",
+            "Last-Modified": "last-modified",
+            "Content-Type": "zip",
+        },
     )
     content = await client.get_pipeline_files("default", TEST_URL)
     filename = client._local_path / "default" / "pipeline.yaml"
