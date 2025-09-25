@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from kfp_server_api import V2beta1PipelineVersion
 
 from ml_operator.services.kubeflow_pipelines_service import KubeflowPipelinesService
 from ml_operator.resource import AkamaiKnowledgeBase, KBData, KBIndexing
@@ -28,6 +29,10 @@ def service_with_mock_client():
         "ml_operator.services.kubeflow_pipelines_service.Client"
     ) as mock_client_class:
         mock_client = Mock()
+
+        mock_client.upload_pipeline_version.return_value = V2beta1PipelineVersion(
+            "pipeline-123", "pipeline-123-456"
+        )
 
         # Pipeline data
         mock_client.get_pipeline_id.return_value = "pipeline-123"
@@ -65,7 +70,7 @@ def service_with_mock_client():
 @patch("os.getenv")
 def test_endpoint_from_parameter(mock_getenv):
     service = KubeflowPipelinesService("http://test-endpoint")
-    assert service.kubeflow_endpoint == "http://test-endpoint"
+    assert service._kubeflow_endpoint == "http://test-endpoint"
     mock_getenv.assert_not_called()
 
 
@@ -74,16 +79,33 @@ def test_endpoint_from_environment(mock_getenv):
     mock_getenv.return_value = "http://env-endpoint"
     service = KubeflowPipelinesService()
 
-    assert service.kubeflow_endpoint == "http://env-endpoint"
+    assert service._kubeflow_endpoint == "http://env-endpoint"
     mock_getenv.assert_called_once_with("KUBEFLOW_ENDPOINT")
 
 
 def test_missing_endpoint_error():
     service = KubeflowPipelinesService()
-    service.kubeflow_endpoint = None
+    service._kubeflow_endpoint = None
 
     with pytest.raises(ValueError, match="Kubeflow endpoint not configured"):
         service._get_client()
+
+
+def test_upload(service_with_mock_client, compiled_pipeline: str):
+    """
+    Verify single package upload.
+    """
+    service, mock_client = service_with_mock_client
+    result = service.upload(
+        compiled_pipeline, "pipeline 0.1.0", "pipeline", "Description"
+    )
+    assert result == ("pipeline-123", "pipeline-123-456")
+    mock_client.upload_pipeline_version.assert_called_once_with(
+        compiled_pipeline,
+        "pipeline 0.1.0",
+        pipeline_id="pipeline-123",
+        description="Description",
+    )
 
 
 def test_experiment_creation(service_with_mock_client):

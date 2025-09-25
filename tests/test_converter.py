@@ -1,6 +1,6 @@
 from ml_operator.converter import converter
 from ml_operator.resource import AkamaiKnowledgeBase
-from .common import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
+from .conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
 
 def test_deserialization():

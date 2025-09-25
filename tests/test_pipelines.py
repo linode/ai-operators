@@ -1,11 +1,8 @@
-import importlib
-import sys
 from io import BytesIO
 from zipfile import ZipFile
 
 from aiohttp import ClientResponseError
 from aioresponses import aioresponses
-from kfp.compiler import Compiler
 
 from ml_operator.pipelines.downloader import (
     PipelineDownloader,
@@ -14,7 +11,6 @@ from ml_operator.pipelines.downloader import (
     SizeExceededException,
     UnexpectedResponseException,
 )
-import os
 import tempfile
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -24,7 +20,6 @@ from kubernetes_asyncio.client import V1ConfigMap
 
 from ml_operator.pipelines.config import PipelineConfigLoader, PipelineSourceConfig
 from ml_operator.pipelines.updater import PipelineUpdater
-from ml_operator.pipelines.uploader import PipelineUploader
 
 
 async def test_config(mocker):
@@ -46,88 +41,6 @@ async def test_config(mocker):
     }
 
 
-@pytest.fixture
-def temp_dir():
-    """
-    Provides a temporary directory per function.
-    """
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as path:
-        yield path
-
-
-PIPELINE_SCRIPT = """\
-from kfp import dsl
-
-PIPELINE_FUNC_NAME = "test_pipeline"
-PIPELINE_VERSION = "0.1.0"
-
-@dsl.component(
-    base_image='nvcr.io/nvidia/ai-workbench/python-cuda117:1.0.3',
-    packages_to_install=['psycopg2-binary', 'llama-index', 'llama-index-vector-stores-postgres',
-                         'llama-index-embeddings-openai-like', 'kubernetes']
-)
-def cmp():
-    return "Hello!"
-
-@dsl.pipeline(name='test-pipeline')
-def test_pipeline():
-    cmp()
-"""
-
-
-@pytest.fixture(scope="session")
-def pipeline_script():
-    """
-    Provides a raw pipeline script for tests.
-    """
-    with NamedTemporaryFile("wt", suffix=".py", delete=False) as f:
-        f.write(PIPELINE_SCRIPT)
-    yield Path(f.name)
-    try:
-        os.unlink(f.name)
-    except Exception:
-        pass
-
-
-@pytest.fixture(scope="session")
-def compiled_pipeline(pipeline_script: Path):
-    """
-    Provides a compiled pipeline package.
-    """
-    mod_path = str(pipeline_script.parent)
-    mod_name = pipeline_script.name.removesuffix(".py")
-    sys.path.insert(0, mod_path)
-    try:
-        test_module = importlib.import_module(mod_name)
-    finally:
-        sys.path.remove(mod_path)
-    with tempfile.TemporaryDirectory() as temp_dir:
-        filename = f"{temp_dir}/pipeline.yaml"
-        Compiler().compile(
-            pipeline_func=test_module.test_pipeline,
-            package_path=filename,
-        )
-        yield filename
-
-
-def test_uploader(mocker, compiled_pipeline: str):
-    """
-    Verify single package upload.
-    """
-    uploader = PipelineUploader()
-    client_mock = mocker.patch.object(uploader, "_client")
-    uploader.upload(
-        compiled_pipeline, "pipeline 0.1.0", "pipeline", "0.1.0", "Description"
-    )
-    client_mock.upload_pipeline_version.assert_called_once_with(
-        compiled_pipeline,
-        "pipeline 0.1.0",
-        "0.1.0",
-        pipeline_name="pipeline",
-        description="Description",
-    )
-
-
 async def test_updater(mocker, compiled_pipeline: str):
     """
     Verify entire update cycle.
@@ -140,10 +53,12 @@ async def test_updater(mocker, compiled_pipeline: str):
         ),
     )
     updater = PipelineUpdater()
-    mock_upload = mocker.patch.object(updater._uploader, "upload")
+    mock_service = mocker.patch.object(updater._pipeline_service, "upload")
     await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
     mock_downloader.get_pipeline_files.assert_called_once_with("default", "url")
-    mock_upload.assert_called_once_with(compiled_pipeline, "default 1.0.0", None)
+    mock_service.assert_called_once_with(
+        compiled_pipeline, "pipeline 1.0.0", "pipeline"
+    )
 
 
 async def test_updater_skip(mocker):
@@ -161,12 +76,12 @@ async def test_updater_skip(mocker):
     updater._response_cache = {
         "default": PipelineFileResponse([], "etag", "last-modified")
     }
-    mock_upload = mocker.patch.object(updater._uploader, "upload")
+    mock_service = mocker.patch.object(updater._pipeline_service, "upload")
     await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
     mock_downloader.get_pipeline_files.assert_called_once_with(
         "default", "url", etag="etag", last_modified="last-modified"
     )
-    mock_upload.assert_not_called()
+    mock_service.assert_not_called()
 
 
 TEST_URL = "https://example.com/myfile.py"
