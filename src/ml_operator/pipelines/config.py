@@ -75,7 +75,8 @@ class PipelineConfigLoader:
         for name in discarded_names:
             del self._current_config[name]
 
-    def get_config(self) -> dict[str, PipelineSourceConfig]:
+    @property
+    def config(self) -> dict[str, PipelineSourceConfig]:
         """
         Returns the last set of configurations retrieved.
         """

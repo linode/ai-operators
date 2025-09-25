@@ -33,12 +33,10 @@ async def test_config(mocker):
         ),
     )
     config_loader = PipelineConfigLoader()
-    assert config_loader.get_config() == {}
+    assert config_loader.config == {}
     await config_loader.update_config()
     mock_core_api.assert_called_once_with("pipelines", "ml-operator")
-    assert config_loader.get_config() == {
-        "default": PipelineSourceConfig("<test-url>", None)
-    }
+    assert config_loader.config == {"default": PipelineSourceConfig("<test-url>", None)}
 
 
 async def test_updater(mocker, compiled_pipeline: str):

@@ -68,7 +68,7 @@ async def update_pipelines():
         while True:
             try:
                 await updater.run(
-                    PIPELINE_RUNTIME_CONFIG.config_loader.get_config(), downloader
+                    PIPELINE_RUNTIME_CONFIG.config_loader.config, downloader
                 )
             except Exception as e:
                 main_logger.error("Error during pipeline source update", exc_info=e)
