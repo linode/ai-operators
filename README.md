@@ -158,7 +158,16 @@ kubectl port-forward -n kfp service/ml-pipeline 3000:80 &
 python tests/resources/upload-pipeline.py
 ```
 
-**12. Build and deploy ML-Operator**
+**12. Set up test pipeline source config**
+
+First copy .secrets.template to .secrets, and follow the instructions to create and set a token
+```sh
+kubectl create ns ml-operator
+kubectl create configmap pipelines -n ml-operator --from-literal=default='{"url": "https://api.github.com/repos/linode/ml-pipelines/actions/artifacts/4055865221/zip", "authType": "bearer", "authSecretName": "pipelines", "authSecretKey": "gh-token"}'  <!--- pragma: allowlist secret --->
+kubectl create secret pipelines -n ml-operator --from-env-file .secrets
+```
+
+**13. Build and deploy ML-Operator**
 ```bash
 # Generate requirements.txt
 uv run poe export-deps
@@ -170,7 +179,7 @@ docker build -t ml-operator:local .
 kind load docker-image ml-operator:local --name ml-operator-test
 
 # Deploy the ML-Operator
-helm install ml-operator ./chart \
+helm install -n ml-operator ml-operator ./chart \
   --set image.repository=ml-operator \
   --set image.tag=local \
   --set image.pullPolicy=Never \
