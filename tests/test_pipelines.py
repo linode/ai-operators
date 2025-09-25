@@ -16,7 +16,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import pytest
-from kubernetes_asyncio.client import V1ConfigMap, V1Secret
+from kubernetes_asyncio.client import V1ConfigMap, V1Secret, ApiException
 
 from ml_operator.pipelines.config import (
     PipelineConfigLoader,
@@ -56,6 +56,72 @@ async def test_config(mocker):
     }
     mock_config_map.assert_called_once_with("pipelines", "ml-operator")
     mock_secret.assert_called_once_with("test-secret", "ml-operator")
+
+
+@pytest.mark.parametrize(
+    "config_map_value, secret_value",
+    [
+        pytest.param("invalid-config", None, id="invalid-config"),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer"}', None, id="no-secret"
+        ),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            None,
+            id="missing-secret",
+        ),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            {"other-key": "dGVzdC12YWx1ZQ=="},
+            id="missing-secret-key",
+        ),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            {"test-key": "invalid-value"},
+            id="invalid-secret-value",
+        ),
+    ],
+)
+async def test_config_invalid(config_map_value, secret_value, mocker):
+    """
+    Valid config entries should be read, invalid existing ones should not be discarded until removed.
+    """
+    config_loader = PipelineConfigLoader()
+    # Initialize with a previously-read valid config
+    config_loader._current_config = {
+        "default": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        ),
+        "second": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        ),
+    }
+    mock_config_map = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
+        mocker.AsyncMock(return_value=V1ConfigMap(data={"default": config_map_value})),
+    )
+    if secret_value:
+        mock_secret_return = mocker.AsyncMock(
+            return_value=V1Secret(data={"test-key": "dGVzdC12YWx1ZQ=="})
+        )
+    else:
+        mock_secret_return = mocker.AsyncMock(
+            side_effect=ApiException(status=404, reason="Not found.")
+        )
+
+    mock_secret = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
+        mock_secret_return,
+    )
+    await config_loader.update_config()
+    config_loader._current_config = {
+        "default": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        ),
+    }
+    mock_config_map.assert_called_once_with("pipelines", "ml-operator")
+    if secret_value:
+        mock_secret.assert_called_once_with("test-secret", "ml-operator")
 
 
 async def test_updater(mocker, compiled_pipeline: str):
