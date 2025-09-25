@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+import yaml
+
 from .config import PipelineSourceConfig
 from .downloader import PipelineDownloader, PipelineFileResponse
 from ..services import KubeflowPipelinesService
@@ -18,8 +20,19 @@ class PipelineUpdater:
         self._response_cache: dict[str, PipelineFileResponse] = {}
 
     def _upload_pipeline(
-        self, package_path: Path, version_name: str, pipeline_name
+        self, package_path: Path, version: str
     ) -> tuple[str, str | None]:
+        default_name = package_path.name.removesuffix(".yaml")
+        try:
+            with package_path.open("rt") as package_file:
+                parsed_package = yaml.safe_load(package_file)
+            pipeline_name = parsed_package["pipelineInfo"]["name"]
+        except Exception as e:
+            pipeline_name = default_name
+            logger.warning(
+                f"Could not extract pipeline name from '{package_path.name}'.", e
+            )
+        version_name = f"{pipeline_name} {version}"
         return self._pipeline_service.upload(
             str(package_path), version_name, pipeline_name
         )
@@ -42,11 +55,9 @@ class PipelineUpdater:
             version = config.version or "1.0.0"
             logger.debug(f"Processing files: {response.file_paths}")
             for file_path in response.file_paths:
-                pipeline_name = file_path.name.removesuffix(".yaml")
                 self._upload_pipeline(
                     file_path,
-                    f"{pipeline_name} {version}",
-                    pipeline_name,
+                    version,
                 )
             self._response_cache[name] = response
 

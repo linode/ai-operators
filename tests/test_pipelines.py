@@ -57,7 +57,7 @@ async def test_updater(mocker, compiled_pipeline: str):
     await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
     mock_downloader.get_pipeline_files.assert_called_once_with("default", "url")
     mock_service.assert_called_once_with(
-        compiled_pipeline, "pipeline 1.0.0", "pipeline"
+        compiled_pipeline, "test-pipeline 1.0.0", "test-pipeline"
     )
 
 
