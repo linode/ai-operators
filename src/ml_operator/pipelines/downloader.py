@@ -1,4 +1,5 @@
 import logging
+import platform
 import tempfile
 from codecs import StreamReader
 from pathlib import Path
@@ -11,6 +12,7 @@ from aiohttp import (
     TCPConnector,
     ClientResponse,
     ThreadedResolver,
+    AsyncResolver,
 )
 from attrs import define
 
@@ -80,8 +82,11 @@ class PipelineDownloader:
 
     def _get_session(self) -> ClientSession:
         timeout = ClientTimeout(total=self._config.timeout)
-        # AsyncResolver does not support mDNS
-        resolver = ThreadedResolver()
+        if platform.system() == "Darwin":
+            # AsyncResolver does not support mDNS
+            resolver = ThreadedResolver()
+        else:
+            resolver = AsyncResolver()
         connector = TCPConnector(
             limit=self._config.max_connections,
             limit_per_host=self._config.max_connections_per_host,
