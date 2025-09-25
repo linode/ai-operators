@@ -49,7 +49,7 @@ class PipelineUpdater:
             kwargs["last_modified"] = last_response.last_modified
         logger.debug(f"Checking on pipeline source updates for '{name}'")
         is_updated, response = await downloader.get_pipeline_files(
-            name, config.url, **kwargs
+            name, config, **kwargs
         )  # type: bool, PipelineFileResponse
         if is_updated:
             version = config.version or "1.0.0"

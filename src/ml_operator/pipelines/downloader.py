@@ -1,7 +1,7 @@
+import base64
 import logging
 import platform
 import tempfile
-from codecs import StreamReader
 from pathlib import Path
 from typing import IO
 from zipfile import ZipFile
@@ -13,9 +13,11 @@ from aiohttp import (
     ClientResponse,
     ThreadedResolver,
     AsyncResolver,
+    StreamReader,
 )
 from attrs import define
 
+from ml_operator.pipelines.config import PipelineSourceConfig, PipelineSourceAuth
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +50,16 @@ class PipelineFileResponse:
     last_modified: str
 
 
-def _get_request_headers(etag: str | None, last_modified: str | None):
+def _get_request_headers(
+    config: PipelineSourceConfig, etag: str | None, last_modified: str | None
+):
     headers = {}
+    if config.auth_type == PipelineSourceAuth.BASIC:
+        headers["Authorization"] = (
+            f"Basic {base64.b64encode(config.auth_token.encode()).decode()}"
+        )
+    elif config.auth_type == PipelineSourceAuth.BEARER:
+        headers["Authorization"] = f"Bearer {config.auth_token}"
     if etag:
         headers["If-None-Match"] = etag
     if last_modified:
@@ -153,7 +163,7 @@ class PipelineDownloader:
     async def get_pipeline_files(
         self,
         name: str,
-        url: str,
+        config: PipelineSourceConfig,
         etag: str | None = None,
         last_modified: str | None = None,
     ) -> tuple[bool, PipelineFileResponse | None]:
@@ -165,14 +175,14 @@ class PipelineDownloader:
         """
         if not self._session:
             raise RuntimeError("Session not initialized.")
-        headers = _get_request_headers(etag, last_modified)
-        async with self._session.get(url, headers=headers) as response:
+        headers = _get_request_headers(config, etag, last_modified)
+        async with self._session.get(config.url, headers=headers) as response:
             response.raise_for_status()
             if response.status == 304:
-                logger.debug(f"File at {url} unchanged.")
+                logger.debug(f"File at {config.url} unchanged.")
                 return False, None
             elif response.status == 200:
-                logger.info(f"Reading file from {url}.")
+                logger.info(f"Reading file from {config.url}.")
                 path = self._local_path / name
                 path.mkdir(parents=True, exist_ok=True)
                 return True, await self._process_response(response, path)

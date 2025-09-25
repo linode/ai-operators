@@ -16,9 +16,13 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import pytest
-from kubernetes_asyncio.client import V1ConfigMap
+from kubernetes_asyncio.client import V1ConfigMap, V1Secret
 
-from ml_operator.pipelines.config import PipelineConfigLoader, PipelineSourceConfig
+from ml_operator.pipelines.config import (
+    PipelineConfigLoader,
+    PipelineSourceConfig,
+    PipelineSourceAuth,
+)
 from ml_operator.pipelines.updater import PipelineUpdater
 
 
@@ -26,17 +30,32 @@ async def test_config(mocker):
     """
     Reading the pipeline configuration from the cluster.
     """
-    mock_core_api = mocker.patch(
+    mock_config_map = mocker.patch(
         "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
         mocker.AsyncMock(
-            return_value=V1ConfigMap(data={"default": '{"url": "<test-url>"}'})
+            return_value=V1ConfigMap(
+                data={
+                    "default": '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}'
+                }
+            )
+        ),
+    )
+    mock_secret = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
+        mocker.AsyncMock(
+            return_value=V1Secret(data={"test-key": "dGVzdC12YWx1ZQ=="})  # "test-value"
         ),
     )
     config_loader = PipelineConfigLoader()
     assert config_loader.config == {}
     await config_loader.update_config()
-    mock_core_api.assert_called_once_with("pipelines", "ml-operator")
-    assert config_loader.config == {"default": PipelineSourceConfig("<test-url>", None)}
+    assert config_loader.config == {
+        "default": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        )
+    }
+    mock_config_map.assert_called_once_with("pipelines", "ml-operator")
+    mock_secret.assert_called_once_with("test-secret", "ml-operator")
 
 
 async def test_updater(mocker, compiled_pipeline: str):
@@ -52,8 +71,9 @@ async def test_updater(mocker, compiled_pipeline: str):
     )
     updater = PipelineUpdater()
     mock_service = mocker.patch.object(updater._pipeline_service, "upload")
+    config = PipelineSourceConfig("url")
     await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
-    mock_downloader.get_pipeline_files.assert_called_once_with("default", "url")
+    mock_downloader.get_pipeline_files.assert_called_once_with("default", config)
     mock_service.assert_called_once_with(
         compiled_pipeline, "test-pipeline 1.0.0", "test-pipeline"
     )
@@ -75,9 +95,10 @@ async def test_updater_skip(mocker):
         "default": PipelineFileResponse([], "etag", "last-modified")
     }
     mock_service = mocker.patch.object(updater._pipeline_service, "upload")
-    await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
+    config = PipelineSourceConfig("url")
+    await updater.run({"default": config}, mock_downloader)
     mock_downloader.get_pipeline_files.assert_called_once_with(
-        "default", "url", etag="etag", last_modified="last-modified"
+        "default", config, etag="etag", last_modified="last-modified"
     )
     mock_service.assert_not_called()
 
@@ -120,11 +141,54 @@ async def test_get_file(mock_response, client):
         body="test-content",
         headers={"ETag": "etag", "Last-Modified": "last-modified"},
     )
-    content = await client.get_pipeline_files("default", TEST_URL)
+    content = await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
     filename = client._local_path / "default" / "pipeline.yaml"
     assert content == (
         True,
         PipelineFileResponse([filename], "etag", "last-modified"),
+    )
+
+
+@pytest.mark.parametrize(
+    "source_config_header",
+    [
+        (
+            PipelineSourceConfig(
+                TEST_URL, auth_type=PipelineSourceAuth.BASIC, auth_token="test"
+            ),
+            "Basic dGVzdA==",
+        ),
+        (
+            PipelineSourceConfig(
+                TEST_URL, auth_type=PipelineSourceAuth.BEARER, auth_token="test"
+            ),
+            "Bearer test",
+        ),
+    ],
+)
+async def test_get_file_with_auth(source_config_header, mock_response, client):
+    """
+    Verifies single file retrieval using authentication.
+    """
+    mock_response.get(
+        TEST_URL,
+        status=200,
+        body="test-content",
+        headers={"ETag": "etag", "Last-Modified": "last-modified"},
+    )
+    source_config, expected_header = source_config_header
+    content = await client.get_pipeline_files("default", source_config)
+    filename = client._local_path / "default" / "pipeline.yaml"
+    assert content == (
+        True,
+        PipelineFileResponse([filename], "etag", "last-modified"),
+    )
+    mock_response.assert_called_once_with(
+        TEST_URL,
+        method="GET",
+        headers={
+            "Authorization": expected_header,
+        },
     )
 
 
@@ -149,7 +213,7 @@ async def test_get_zip_file(mock_response, client):
             "Content-Type": "zip",
         },
     )
-    content = await client.get_pipeline_files("default", TEST_URL)
+    content = await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
     filename = client._local_path / "default" / "pipeline.yaml"
     assert content == (
         True,
@@ -174,7 +238,9 @@ async def test_get_file_not_updated(update_args_headers, mock_response, client):
     """
     update_args, expected_headers = update_args_headers
     mock_response.get(TEST_URL, status=304)
-    content = await client.get_pipeline_files("default", TEST_URL, *update_args)
+    content = await client.get_pipeline_files(
+        "default", PipelineSourceConfig(TEST_URL), *update_args
+    )
     mock_response.assert_called_once_with(
         TEST_URL, method="GET", headers=expected_headers
     )
@@ -194,7 +260,7 @@ async def test_size_error_header(mock_response, client):
         },
     )
     with pytest.raises(SizeExceededException):
-        await client.get_pipeline_files("default", TEST_URL)
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
 
 
 async def test_size_error_content(mock_response, client):
@@ -210,7 +276,7 @@ async def test_size_error_content(mock_response, client):
         },
     )
     with pytest.raises(SizeExceededException):
-        await client.get_pipeline_files("default", TEST_URL)
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
 
 
 async def test_http_status_error(mock_response, client):
@@ -219,7 +285,7 @@ async def test_http_status_error(mock_response, client):
     """
     mock_response.get(TEST_URL, status=404)
     with pytest.raises(ClientResponseError):
-        await client.get_pipeline_files("default", TEST_URL)
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
 
 
 async def test_http_unexpected_error(mock_response, client):
@@ -228,4 +294,4 @@ async def test_http_unexpected_error(mock_response, client):
     """
     mock_response.get(TEST_URL, status=300)
     with pytest.raises(UnexpectedResponseException):
-        await client.get_pipeline_files("default", TEST_URL)
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
