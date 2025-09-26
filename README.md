@@ -100,8 +100,8 @@ helm install pgvector-cluster /tmp/apl-charts/pgvector-cluster \
 ```bash
 helm install minio minio/minio \
   --namespace kfp \
-  --set auth.rootUser=otomi-admin \
-  --set auth.rootPassword=changeme \
+  --set rootUser=otomi-admin \
+  --set rootPassword=supersecretkey \
   --set defaultBuckets="kubeflow-pipelines" \
   --set resources.requests.memory=256Mi \
   --set resources.limits.memory=512Mi \
@@ -113,16 +113,9 @@ helm install minio minio/minio \
 
 **8. Create Kubeflow Pipelines secrets**
 ```bash
-kubectl create secret generic kfp-mysql-secret \
-  --from-literal=username=root \
-  --from-literal=password=changeme \
-  --namespace kfp
-
-kubectl label secret kfp-mysql-secret app=kubeflow-pipelines -n kfp
-
 kubectl create secret generic mlpipeline-minio-artifact \
   --from-literal=accesskey=otomi-admin \
-  --from-literal=secretkey=changeme \
+  --from-literal=secretkey=supersecretkey \
   --namespace kfp
 
 kubectl label secret mlpipeline-minio-artifact app=kubeflow-pipelines -n kfp
