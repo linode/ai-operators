@@ -20,7 +20,7 @@ from kubernetes_asyncio.client.api_client import ApiClient
 
 from ml_operator.constants import CUSTOM_API_ARGS
 from ml_operator.resource import AkamaiKnowledgeBase
-from .common import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
+from .conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
 _DIR = Path(__file__).parent
 

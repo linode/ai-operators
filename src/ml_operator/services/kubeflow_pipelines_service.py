@@ -10,44 +10,75 @@ from ..resource import AkamaiKnowledgeBase
 
 class KubeflowPipelinesService:
     def __init__(self, kubeflow_endpoint: Optional[str] = None):
-        self.kubeflow_endpoint = kubeflow_endpoint or os.getenv("KUBEFLOW_ENDPOINT")
-        self.client: Optional[Client] = None
+        self._kubeflow_endpoint = kubeflow_endpoint or os.getenv("KUBEFLOW_ENDPOINT")
+        self._client: Optional[Client] = None
 
     def _get_client(self) -> Client:
-        if not self.client:
-            if not self.kubeflow_endpoint:
-                raise ValueError("Kubeflow endpoint not configured. Set KUBEFLOW_ENDPOINT environment variable.")
-            self.client = Client(host=self.kubeflow_endpoint)
-        return self.client
+        if not self._client:
+            if not self._kubeflow_endpoint:
+                raise ValueError(
+                    "Kubeflow endpoint not configured. Set KUBEFLOW_ENDPOINT environment variable."
+                )
+            self._client = Client(host=self._kubeflow_endpoint)
+        return self._client
 
     def _get_or_create_experiment(self, name: str) -> str:
-        client = self._get_client()
         """This function checks if an experiment exists, and creates it if not."""
+        client = self._get_client()
         experiment = client.create_experiment(
-            name=name,
-            description=f"ML-Operator experiment for knowledge base {name}"
+            name=name, description=f"ML-Operator experiment for knowledge base {name}"
         )
         return experiment.experiment_id
 
     def _get_latest_pipeline_version(self, pipeline_id, pipeline_name):
-        client = self._get_client()
         """Same fetch is used in kfp UI (page_size=1&sort_by=created_at%20desc)"""
+        client = self._get_client()
         versions = client.list_pipeline_versions(
-            pipeline_id=pipeline_id,
-            page_size=1,
-            sort_by="created_at desc"
+            pipeline_id=pipeline_id, page_size=1, sort_by="created_at desc"
         )
         if not versions.pipeline_versions:
             raise ValueError(f"No versions found for pipeline '{pipeline_name}'")
         version_id = versions.pipeline_versions[0].pipeline_version_id
         return version_id
 
+    def upload(
+        self,
+        package_path: str,
+        version_name: str,
+        pipeline_name: str,
+        description: str | None = None,
+    ) -> tuple[str, str | None]:
+        """
+        Performs the upload of a single pipeline package.
+
+        Returns the pipeline id, and if applicable also the pipeline version id
+        """
+        client = self._get_client()
+        pipeline_id = client.get_pipeline_id(pipeline_name)
+        if pipeline_id:
+            pipeline_version = self._get_client().upload_pipeline_version(
+                package_path,
+                version_name,
+                pipeline_id=pipeline_id,
+                description=description,
+            )
+            return pipeline_id, pipeline_version.pipeline_version_id
+        else:
+            pipeline = self._get_client().upload_pipeline(
+                package_path,
+                pipeline_name,
+                description=description,
+            )
+            return pipeline.pipeline_id, None
+
     def run_pipeline(self, namespace: str, name: str, kb: AkamaiKnowledgeBase) -> str:
         client = self._get_client()
 
         pipeline_name = kb.indexing.embedding_pipeline
         if not pipeline_name:
-            raise ValueError(f"No embedding pipeline specified for knowledge base {name}")
+            raise ValueError(
+                f"No embedding pipeline specified for knowledge base {name}"
+            )
 
         pipeline_id = client.get_pipeline_id(pipeline_name)
         if not pipeline_id:
@@ -74,7 +105,7 @@ class KubeflowPipelinesService:
             job_name=f"{name}-{namespace}-{timestamp}",
             pipeline_id=pipeline_id,
             version_id=version_id,
-            params=parameters
+            params=parameters,
         )
 
         return run_result.run_id
@@ -86,5 +117,5 @@ class KubeflowPipelinesService:
             "id": run.run_id,
             "details": run.run_details,
             "created_at": run.created_at,
-            "finished_at": run.finished_at
+            "finished_at": run.finished_at,
         }

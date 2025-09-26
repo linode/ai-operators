@@ -1,195 +1,363 @@
-import os
+from io import BytesIO
+from zipfile import ZipFile
+
+from aiohttp import ClientResponseError
+from aioresponses import aioresponses
+
+from ml_operator.pipelines.downloader import (
+    PipelineDownloader,
+    PipelineDownloadConfig,
+    PipelineFileResponse,
+    SizeExceededException,
+    UnexpectedResponseException,
+)
 import tempfile
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Iterable
 
 import pytest
-from kfp.dsl.base_component import BaseComponent
+from kubernetes_asyncio.client import V1ConfigMap, V1Secret, ApiException
 
-from ml_operator.pipelines.repo_manager import Repo, RepoManager, RepoInvalidRef
-from ml_operator.pipelines import extractor
-from ml_operator.pipelines.uploader import PipelineUploader
-
-
-@pytest.fixture
-def temp_dir():
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as path:
-        yield path
-
-
-def add_repo_files(
-    repo: Repo, paths_contents: Iterable[tuple[str, str]], commit_msg: str | None = None
-):
-    index_paths: list[str] = []
-    root_path = Path(repo.working_dir)
-    for path, content in paths_contents:
-        file_path = Path(root_path / path)
-        parent_dir = file_path.parent
-        if not parent_dir.exists():
-            parent_dir.mkdir(parents=True)
-        with (root_path / path).open("w") as f:
-            f.write(content)
-        index_paths.append(path)
-    repo.index.add(index_paths)
-    if commit_msg:
-        repo.index.commit(commit_msg)
-
-
-@pytest.fixture
-def remote_repo(mocker, temp_dir):
-    repo = Repo.init(temp_dir, initial_branch="main")
-    add_repo_files(repo, [("README.md", "# Test")], "Initial commit.")
-
-    _original_clone_from = Repo.clone_from
-
-    def clone_new(_remote_url, *args, **kwargs):
-        return _original_clone_from(temp_dir, *args, **kwargs)
-
-    mocker.patch.object(Repo, "clone_from", new=clone_new)
-    yield repo
-
-
-@pytest.mark.parametrize("update", [True, False])
-def test_repo_init(remote_repo: Repo, temp_dir: str, update: bool):
-    repo_dir = Path(temp_dir) / "repo"
-    manager = RepoManager("url", repo_dir)
-    if update:
-        result = manager.update_repo()
-    else:
-        result = manager.init_repo()
-    assert repo_dir.is_dir()
-    assert (repo_dir / "README.md").is_file()
-    assert result == [
-        repo_dir / "README.md",
-    ]
-
-
-def test_repo_invalid_ref(remote_repo: Repo, temp_dir: str):
-    repo_dir = Path(temp_dir) / "repo"
-    manager = RepoManager("url", repo_dir, "nonexistent")
-    with pytest.raises(RepoInvalidRef):
-        manager.init_repo()
-
-
-def test_repo_update(remote_repo: Repo, temp_dir: str):
-    repo_dir = Path(temp_dir) / "repo"
-    manager = RepoManager("url", repo_dir)
-    manager.init_repo()
-    add_repo_files(
-        remote_repo,
-        [
-            ("subDir/subDir2/test.py", "print('Test')"),
-            ("subDir/test.py", "print('Test')"),
-            ("test.txt", "Some text"),
-        ],
-        commit_msg="Added files.",
-    )
-
-    result = manager.update_repo()
-    assert result == [
-        repo_dir / "subDir" / "subDir2" / "test.py",
-        repo_dir / "subDir" / "test.py",
-        repo_dir / "test.txt",
-    ]
-
-
-@pytest.mark.parametrize("local_commit", [False, True])
-def test_repo_update_dirty(
-    mocker, remote_repo: Repo, temp_dir: str, local_commit: bool
-):
-    repo_dir = Path(temp_dir) / "repo"
-    manager = RepoManager("url", repo_dir)
-    manager.init_repo()
-
-    add_repo_files(
-        remote_repo,
-        [
-            ("subDir/test.py", "print('Test')"),
-            ("test.txt", "Some text"),
-        ],
-        commit_msg="Added remote files.",
-    )
-    add_repo_files(
-        manager._repo,
-        [
-            ("subDir/test2.py", "print('Test')"),
-            ("test.txt", "Some text, too"),
-        ],
-        commit_msg="Added local files." if local_commit else None,
-    )
-    init_spy = mocker.spy(manager, "init_repo")
-
-    result = manager.update_repo()
-    if local_commit:
-        init_spy.assert_called_once()
-        assert result == [
-            repo_dir / "README.md",
-            repo_dir / "subDir" / "test.py",
-            repo_dir / "test.txt",
-        ]
-    else:
-        init_spy.assert_not_called()
-        assert result == [
-            repo_dir / "subDir" / "test.py",
-            repo_dir / "test.txt",
-        ]
-
-
-PIPELINE_SCRIPT = """\
-from kfp import dsl
-
-PIPELINE_FUNC_NAME = "test_pipeline"
-PIPELINE_VERSION = "0.1.0"
-
-@dsl.component(
-    base_image='nvcr.io/nvidia/ai-workbench/python-cuda117:1.0.3',
-    packages_to_install=['psycopg2-binary', 'llama-index', 'llama-index-vector-stores-postgres',
-                         'llama-index-embeddings-openai-like', 'kubernetes']
+from ml_operator.pipelines.config import (
+    PipelineConfigLoader,
+    PipelineSourceConfig,
+    PipelineSourceAuth,
 )
-def cmp():
-    return "Hello!"
+from ml_operator.pipelines.updater import PipelineUpdater
 
-@dsl.pipeline(name='test-pipeline')
-def test_pipeline():
-    cmp()
-"""
+
+async def test_config(mocker):
+    """
+    Reading the pipeline configuration from the cluster.
+    """
+    mock_config_map = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
+        mocker.AsyncMock(
+            return_value=V1ConfigMap(
+                data={
+                    "default": '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}'
+                }
+            )
+        ),
+    )
+    mock_secret = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
+        mocker.AsyncMock(
+            return_value=V1Secret(data={"test-key": "dGVzdC12YWx1ZQ=="})  # "test-value"
+        ),
+    )
+    config_loader = PipelineConfigLoader()
+    assert config_loader.config == {}
+    await config_loader.update_config()
+    assert config_loader.config == {
+        "default": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        )
+    }
+    mock_config_map.assert_called_once_with("pipelines", "ml-operator")
+    mock_secret.assert_called_once_with("test-secret", "ml-operator")
+
+
+@pytest.mark.parametrize(
+    "config_map_value, secret_value",
+    [
+        pytest.param("invalid-config", None, id="invalid-config"),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer"}', None, id="no-secret"
+        ),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            None,
+            id="missing-secret",
+        ),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            {"other-key": "dGVzdC12YWx1ZQ=="},
+            id="missing-secret-key",
+        ),
+        pytest.param(
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            {"test-key": "invalid-value"},
+            id="invalid-secret-value",
+        ),
+    ],
+)
+async def test_config_invalid(config_map_value, secret_value, mocker):
+    """
+    Valid config entries should be read, invalid existing ones should not be discarded until removed.
+    """
+    config_loader = PipelineConfigLoader()
+    # Initialize with a previously-read valid config
+    config_loader._current_config = {
+        "default": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        ),
+        "second": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        ),
+    }
+    mock_config_map = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
+        mocker.AsyncMock(return_value=V1ConfigMap(data={"default": config_map_value})),
+    )
+    if secret_value:
+        mock_secret_return = mocker.AsyncMock(
+            return_value=V1Secret(data={"test-key": "dGVzdC12YWx1ZQ=="})
+        )
+    else:
+        mock_secret_return = mocker.AsyncMock(
+            side_effect=ApiException(status=404, reason="Not found.")
+        )
+
+    mock_secret = mocker.patch(
+        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
+        mock_secret_return,
+    )
+    await config_loader.update_config()
+    config_loader._current_config = {
+        "default": PipelineSourceConfig(
+            "<test-url>", auth_type=PipelineSourceAuth.BEARER, auth_token="test-value"
+        ),
+    }
+    mock_config_map.assert_called_once_with("pipelines", "ml-operator")
+    if secret_value:
+        mock_secret.assert_called_once_with("test-secret", "ml-operator")
+
+
+async def test_updater(mocker, compiled_pipeline: str):
+    """
+    Verify entire update cycle.
+    """
+    mock_downloader = mocker.Mock()
+    mock_downloader.get_pipeline_files = mocker.AsyncMock(
+        return_value=(
+            True,
+            PipelineFileResponse([Path(compiled_pipeline)], "etag", "last-modified"),
+        ),
+    )
+    updater = PipelineUpdater()
+    mock_service = mocker.patch.object(updater._pipeline_service, "upload")
+    config = PipelineSourceConfig("url")
+    await updater.run({"default": PipelineSourceConfig("url")}, mock_downloader)
+    mock_downloader.get_pipeline_files.assert_called_once_with("default", config)
+    mock_service.assert_called_once_with(
+        compiled_pipeline, "test-pipeline 1.0.0", "test-pipeline"
+    )
+
+
+async def test_updater_skip(mocker):
+    """
+    Verify that only updated packages are being resubmitted.
+    """
+    mock_downloader = mocker.Mock()
+    mock_downloader.get_pipeline_files = mocker.AsyncMock(
+        return_value=(
+            False,
+            None,
+        ),
+    )
+    updater = PipelineUpdater()
+    updater._response_cache = {
+        "default": PipelineFileResponse([], "etag", "last-modified")
+    }
+    mock_service = mocker.patch.object(updater._pipeline_service, "upload")
+    config = PipelineSourceConfig("url")
+    await updater.run({"default": config}, mock_downloader)
+    mock_downloader.get_pipeline_files.assert_called_once_with(
+        "default", config, etag="etag", last_modified="last-modified"
+    )
+    mock_service.assert_not_called()
+
+
+TEST_URL = "https://example.com/myfile.py"
+
+
+@pytest.fixture
+async def mock_response():
+    """
+    Provides a mock_response to be filled in tests.
+    """
+    with aioresponses() as m:
+        yield m
 
 
 @pytest.fixture(scope="session")
-def pipeline_script():
-    with NamedTemporaryFile("wt", suffix=".py", delete=False) as f:
-        f.write(PIPELINE_SCRIPT)
-    yield Path(f.name)
-    try:
-        os.unlink(f.name)
-    except Exception:
-        pass
+async def client():
+    """
+    Provides a configured pipeline downloader.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        async with PipelineDownloader(
+            PipelineDownloadConfig(
+                local_path=temp_dir,
+                max_size=1024,
+                chunk_size=256,
+            ),
+        ) as observer:
+            yield observer
 
 
-def test_extractor_load(pipeline_script: Path):
-    result = extractor.load_module(pipeline_script)
-    assert isinstance(result.test_pipeline, BaseComponent)
-    assert isinstance(result.cmp, BaseComponent)
-    assert result.PIPELINE_FUNC_NAME == "test_pipeline"
-
-
-def test_extractor_pipelines(pipeline_script: Path):
-    result = list(extractor.get_pipeline_items([pipeline_script]))
-    assert len(result) == 1
-    assert isinstance(result[0], extractor.PipelineVersion)
-    assert isinstance(result[0].func, BaseComponent)
-    assert result[0].version == "0.1.0"
-
-
-def test_uploader(mocker):
-    uploader = PipelineUploader()
-    client_mock = mocker.patch.object(uploader, "_client")
-
-    def dummy_func():
-        pass
-
-    uploader.upload(dummy_func, "pipeline", "0.1.0", "Description")
-    client_mock.upload_pipeline_version_from_pipeline_func.assert_called_once_with(
-        dummy_func, "0.1.0", pipeline_name="pipeline", description="Description"
+async def test_get_file(mock_response, client):
+    """
+    Verifies single file retrieval.
+    """
+    mock_response.get(
+        TEST_URL,
+        status=200,
+        body="test-content",
+        headers={"ETag": "etag", "Last-Modified": "last-modified"},
     )
+    content = await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
+    filename = client._local_path / "default" / "pipeline.yaml"
+    assert content == (
+        True,
+        PipelineFileResponse([filename], "etag", "last-modified"),
+    )
+
+
+@pytest.mark.parametrize(
+    "source_config_header",
+    [
+        (
+            PipelineSourceConfig(
+                TEST_URL, auth_type=PipelineSourceAuth.BASIC, auth_token="test"
+            ),
+            "Basic dGVzdA==",
+        ),
+        (
+            PipelineSourceConfig(
+                TEST_URL, auth_type=PipelineSourceAuth.BEARER, auth_token="test"
+            ),
+            "Bearer test",
+        ),
+    ],
+)
+async def test_get_file_with_auth(source_config_header, mock_response, client):
+    """
+    Verifies single file retrieval using authentication.
+    """
+    mock_response.get(
+        TEST_URL,
+        status=200,
+        body="test-content",
+        headers={"ETag": "etag", "Last-Modified": "last-modified"},
+    )
+    source_config, expected_header = source_config_header
+    content = await client.get_pipeline_files("default", source_config)
+    filename = client._local_path / "default" / "pipeline.yaml"
+    assert content == (
+        True,
+        PipelineFileResponse([filename], "etag", "last-modified"),
+    )
+    mock_response.assert_called_once_with(
+        TEST_URL,
+        method="GET",
+        headers={
+            "Authorization": expected_header,
+        },
+    )
+
+
+async def test_get_zip_file(mock_response, client):
+    """
+    Verifies zipped file retrieval.
+    """
+    buffer = BytesIO()
+    with (
+        NamedTemporaryFile("wt", suffix=".yaml") as temp_file,
+        ZipFile(buffer, "w") as zf,
+    ):
+        temp_file.write("test-content")
+        zf.write(temp_file.name, arcname="pipeline.yaml")
+    mock_response.get(
+        TEST_URL,
+        status=200,
+        body=buffer.getvalue(),
+        headers={
+            "ETag": "etag",
+            "Last-Modified": "last-modified",
+            "Content-Type": "zip",
+        },
+    )
+    content = await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
+    filename = client._local_path / "default" / "pipeline.yaml"
+    assert content == (
+        True,
+        PipelineFileResponse([filename], "etag", "last-modified"),
+    )
+
+
+@pytest.mark.parametrize(
+    "update_args_headers",
+    [
+        (("etag", None), {"If-None-Match": "etag"}),
+        ((None, "last-modified"), {"If-Modified-Since": "last-modified"}),
+        (
+            ("etag", "last-modified"),
+            {"If-None-Match": "etag", "If-Modified-Since": "last-modified"},
+        ),
+    ],
+)
+async def test_get_file_not_updated(update_args_headers, mock_response, client):
+    """
+    Verifies response handling in case file has not been updated remotely.
+    """
+    update_args, expected_headers = update_args_headers
+    mock_response.get(TEST_URL, status=304)
+    content = await client.get_pipeline_files(
+        "default", PipelineSourceConfig(TEST_URL), *update_args
+    )
+    mock_response.assert_called_once_with(
+        TEST_URL, method="GET", headers=expected_headers
+    )
+    assert content == (False, None)
+
+
+async def test_size_error_header(mock_response, client):
+    """
+    Verifies rejecting files that exceed size limit (header check).
+    """
+    mock_response.get(
+        TEST_URL,
+        status=200,
+        body="test-content",
+        headers={
+            "Content-Length": "1025",
+        },
+    )
+    with pytest.raises(SizeExceededException):
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
+
+
+async def test_size_error_content(mock_response, client):
+    """
+    Verifies rejecting files that exceed size limit (check during download).
+    """
+    mock_response.get(
+        TEST_URL,
+        status=200,
+        body="test-content-that-is-too-long" * 256,
+        headers={
+            "Content-Length": "256",
+        },
+    )
+    with pytest.raises(SizeExceededException):
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
+
+
+async def test_http_status_error(mock_response, client):
+    """
+    Verifies other HTTP errors are reported.
+    """
+    mock_response.get(TEST_URL, status=404)
+    with pytest.raises(ClientResponseError):
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))
+
+
+async def test_http_unexpected_error(mock_response, client):
+    """
+    Verifies unknown HTTP error codes that are not error codes are reported.
+    """
+    mock_response.get(TEST_URL, status=300)
+    with pytest.raises(UnexpectedResponseException):
+        await client.get_pipeline_files("default", PipelineSourceConfig(TEST_URL))

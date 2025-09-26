@@ -1,8 +1,8 @@
 from kfp import dsl
 
+
 @dsl.component(
-    base_image='python:3.11',
-    packages_to_install=['psycopg2-binary', 'kubernetes']
+    base_image="python:3.11", packages_to_install=["psycopg2-binary", "kubernetes"]
 )
 def mock_doc_ingest_component(
     url: str,
@@ -12,7 +12,7 @@ def mock_doc_ingest_component(
     embed_dim: int,
     embed_batch_size: int,
     secret_name: str,
-    secret_namespace: str
+    secret_namespace: str,
 ) -> None:
     """Mock document ingestion component for testing - only checks database connectivity"""
     print(">>> mock_doc_ingest_component")
@@ -39,13 +39,15 @@ def mock_doc_ingest_component(
         try:
             config.load_incluster_config()
             v1 = client.CoreV1Api()
-            secret = v1.read_namespaced_secret(name=secret_name, namespace=secret_namespace)
+            secret = v1.read_namespaced_secret(
+                name=secret_name, namespace=secret_namespace
+            )
 
-            username = base64.b64decode(secret.data['username']).decode('utf-8')
-            password = base64.b64decode(secret.data['password']).decode('utf-8')
-            host_raw = base64.b64decode(secret.data['host']).decode('utf-8')
-            port = int(base64.b64decode(secret.data['port']).decode('utf-8'))
-            dbname = base64.b64decode(secret.data['dbname']).decode('utf-8')
+            username = base64.b64decode(secret.data["username"]).decode("utf-8")
+            password = base64.b64decode(secret.data["password"]).decode("utf-8")
+            host_raw = base64.b64decode(secret.data["host"]).decode("utf-8")
+            port = int(base64.b64decode(secret.data["port"]).decode("utf-8"))
+            dbname = base64.b64decode(secret.data["dbname"]).decode("utf-8")
 
             host = f"{host_raw}.{secret_namespace}.svc.cluster.local"
 
@@ -63,11 +65,7 @@ def mock_doc_ingest_component(
         import psycopg2
 
         conn = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=username,
-            password=password
+            host=host, port=port, database=database, user=username, password=password
         )
 
         cursor = conn.cursor()
@@ -92,7 +90,7 @@ def mock_doc_ingest_component(
         raise
 
 
-@dsl.pipeline(name='mock-doc-ingest-pipeline')
+@dsl.pipeline(name="mock-doc-ingest-pipeline")
 def mock_doc_ingest_pipeline(
     url: str,
     table_name: str,
@@ -101,7 +99,7 @@ def mock_doc_ingest_pipeline(
     embed_dim: int,
     embed_batch_size: int,
     secret_name: str,
-    secret_namespace: str
+    secret_namespace: str,
 ) -> None:
     """Mock document ingestion pipeline for testing ML-Operator"""
     mock_doc_ingest_component(
@@ -112,11 +110,13 @@ def mock_doc_ingest_pipeline(
         embed_dim=embed_dim,
         embed_batch_size=embed_batch_size,
         secret_name=secret_name,
-        secret_namespace=secret_namespace
+        secret_namespace=secret_namespace,
     )
 
 
-def upload_test_pipeline(kfp_endpoint: str, pipeline_name: str = "mock-doc-ingest-pipeline"):
+def upload_test_pipeline(
+    kfp_endpoint: str, pipeline_name: str = "mock-doc-ingest-pipeline"
+):
     from kfp import Client
 
     print(f"Connecting to Kubeflow Pipelines at: {kfp_endpoint}")
@@ -131,18 +131,17 @@ def upload_test_pipeline(kfp_endpoint: str, pipeline_name: str = "mock-doc-inges
             pipeline_id=existing_pipeline.pipeline_id,
         )
 
-        print(f"✅ Pipeline version uploaded successfully!")
+        print("✅ Pipeline version uploaded successfully!")
         print(f"Version ID: {version_upload.pipeline_version_id}")
         print(f"Version Name: {version_upload.display_name}")
 
     except Exception:
         print("Pipeline doesn't exist, creating new one...")
-        pipeline_upload = client.upload_pipeline_from_pipeline_func(
+        client.upload_pipeline_from_pipeline_func(
             pipeline_func=mock_doc_ingest_pipeline,
             pipeline_name=pipeline_name,
-            description="Mock document ingestion pipeline for ML-Operator testing"
+            description="Mock document ingestion pipeline for ML-Operator testing",
         )
-
 
 
 if __name__ == "__main__":
@@ -151,7 +150,9 @@ if __name__ == "__main__":
     kfp_endpoint = "http://localhost:3000"  # os.getenv("KUBEFLOW_ENDPOINT")
     if not kfp_endpoint:
         print("KUBEFLOW_ENDPOINT environment variable not set")
-        print("Set it with: export KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local")
+        print(
+            "Set it with: export KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local"
+        )
         sys.exit(1)
 
     upload_test_pipeline(kfp_endpoint)

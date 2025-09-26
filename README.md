@@ -100,8 +100,8 @@ helm install pgvector-cluster /tmp/apl-charts/pgvector-cluster \
 ```bash
 helm install minio minio/minio \
   --namespace kfp \
-  --set auth.rootUser=otomi-admin \
-  --set auth.rootPassword=changeme \
+  --set rootUser=otomi-admin \
+  --set rootPassword=supersecretkey \
   --set defaultBuckets="kubeflow-pipelines" \
   --set resources.requests.memory=256Mi \
   --set resources.limits.memory=512Mi \
@@ -113,16 +113,9 @@ helm install minio minio/minio \
 
 **8. Create Kubeflow Pipelines secrets**
 ```bash
-kubectl create secret generic kfp-mysql-secret \
-  --from-literal=username=root \
-  --from-literal=password=changeme \
-  --namespace kfp
-
-kubectl label secret kfp-mysql-secret app=kubeflow-pipelines -n kfp
-
 kubectl create secret generic mlpipeline-minio-artifact \
   --from-literal=accesskey=otomi-admin \
-  --from-literal=secretkey=changeme \
+  --from-literal=secretkey=supersecretkey \
   --namespace kfp
 
 kubectl label secret mlpipeline-minio-artifact app=kubeflow-pipelines -n kfp
@@ -132,9 +125,12 @@ kubectl label secret mlpipeline-minio-artifact app=kubeflow-pipelines -n kfp
 ```bash
 helm install kubeflow-pipelines /tmp/apl-core/charts/kubeflow-pipelines \
   --namespace kfp \
-  --set objectStorage.endpoint=minio.kfp.svc.cluster.local:9000 \
+  --set objectStorage.endpoint=minio.kfp.svc.cluster.local \
   --set objectStorage.bucket=kubeflow-pipelines \
   --set objectStorage.region=us-east-1 \
+  --set objectStorage.port=9000 \
+  --set objectStorage.secure=false \
+  --set objectStorage.type=minio \
   --wait \
   --timeout=10m
 ```
@@ -155,7 +151,16 @@ kubectl port-forward -n kfp service/ml-pipeline 3000:80 &
 python tests/resources/upload-pipeline.py
 ```
 
-**12. Build and deploy ML-Operator**
+**12. Set up test pipeline source config**
+
+First copy .secrets.template to .secrets, and follow the instructions to create and set a token
+```sh
+kubectl create ns ml-operator
+kubectl create configmap pipelines -n ml-operator --from-literal=default='{"url": "https://api.github.com/repos/linode/ml-pipelines/actions/artifacts/4055865221/zip", "authType": "bearer", "authSecretName": "pipelines", "authSecretKey": "gh-token"}'  <!--- pragma: allowlist secret --->
+kubectl create secret pipelines -n ml-operator --from-env-file .secrets
+```
+
+**13. Build and deploy ML-Operator**
 ```bash
 # Generate requirements.txt
 uv run poe export-deps
@@ -167,7 +172,7 @@ docker build -t ml-operator:local .
 kind load docker-image ml-operator:local --name ml-operator-test
 
 # Deploy the ML-Operator
-helm install ml-operator ./chart \
+helm install -n ml-operator ml-operator ./chart \
   --set image.repository=ml-operator \
   --set image.tag=local \
   --set image.pullPolicy=Never \
@@ -216,4 +221,3 @@ kubectl logs -l app.kubernetes.io/name=akamai-ml-operator -f
 # Delete the Kind cluster
 kind delete cluster --name ml-operator-test
 ```
-
