@@ -9,7 +9,7 @@ from typing import Iterable
 from attrs import define
 from cattrs import BaseValidationError
 
-from ..converter import converter
+from converter import converter
 
 from kubernetes_asyncio.client import (
     ApiException,

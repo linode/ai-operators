@@ -18,11 +18,11 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 
-from ml_operator.constants import CUSTOM_API_ARGS
-from ml_operator.resource import AkamaiKnowledgeBase
-from .conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
+from agent_operator.constants import CUSTOM_API_ARGS
+from agent_operator.resource import AkamaiAgent
+from tests.agent_operator.conftest import SAMPLE_AGENT_OBJECT, SAMPLE_AGENT_DICT
 
-_DIR = Path(__file__).parent
+_DIR = Path(__file__).parent.parent
 
 # All tests in this module only run if env variable USE_CLUSTER is set
 #
@@ -47,8 +47,8 @@ def runner():
        ... do things
     ```
     """
-    os.environ["WATCH_NAMESPACES"] = "ml-operator-test"
-    return KopfRunner(["run", "-A", "-m", "ml_operator", "--verbose"])
+    os.environ["WATCH_NAMESPACES"] = "agent-operator-test"
+    return KopfRunner(["run", "-A", "-m", "agent_operator", "--verbose"])
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -64,7 +64,7 @@ async def namespaces(k8s):
     """
     Ensures test-related namespaces for the test exist. Does not clean up.
     """
-    test_namespaces = ["ml-operator-test", "ml-operator-unrelated"]
+    test_namespaces = ["agent-operator-test", "agent-operator-unrelated"]
     async with ApiClient() as api:
         core_api = CoreV1Api(api)
         namespaces = await core_api.list_namespace()
@@ -88,7 +88,7 @@ async def crd(k8s):
     Also drops all related CRs.
     Note that it fails all dependent tests, if the CRD is not valid.
     """
-    with open(_DIR / ".." / "chart/crds/crd.yaml", "r") as f:
+    with open(_DIR / "resources/agent-crd.yaml", "r") as f:
         crd = yaml.safe_load(f)
     # Validate that CRD corresponds with code constants
     assert crd["spec"]["group"] == CUSTOM_API_ARGS["group"]
@@ -148,17 +148,17 @@ def create_sample_cr(name: str) -> dict[str, Any]:
     """
     return {
         "apiVersion": f"{CUSTOM_API_ARGS['group']}/{CUSTOM_API_ARGS['version']}",
-        "kind": "AkamaiKnowledgeBase",
+        "kind": "AkamaiAgent",
         "metadata": {
             "name": name,
         },
-        "spec": deepcopy(SAMPLE_KB_DICT),
+        "spec": deepcopy(SAMPLE_AGENT_DICT),
     }
 
 
-@patch("ml_operator.main.HANDLER.created")
-@patch("ml_operator.main.HANDLER.updated")
-@patch("ml_operator.main.HANDLER.deleted")
+@patch("agent_operator.main.AGENT_HANDLER.created")
+@patch("agent_operator.main.AGENT_HANDLER.updated")
+@patch("agent_operator.main.AGENT_HANDLER.deleted")
 async def test_lifecycle(
     mock_delete,
     mock_update,
@@ -170,7 +170,7 @@ async def test_lifecycle(
     sample_cr = create_sample_cr("lifecycle-test")
     with runner:
         for namespace in namespaces:
-            expect_call = namespace != "ml-operator-unrelated"
+            expect_call = namespace != "agent-operator-unrelated"
             mock_create.reset_mock()
             mock_update.reset_mock()
             mock_delete.reset_mock()
@@ -185,7 +185,7 @@ async def test_lifecycle(
                 await sleep(5)
                 if expect_call:
                     mock_create.assert_called_once_with(
-                        namespace, "lifecycle-test", SAMPLE_KB_OBJECT
+                        namespace, "lifecycle-test", SAMPLE_AGENT_OBJECT
                     )
                 else:
                     mock_create.assert_not_called()
@@ -197,18 +197,18 @@ async def test_lifecycle(
                     body=[
                         {
                             "op": "replace",
-                            "path": "/spec/indexing/dbSecretName",
-                            "value": "pgvector2-app",
+                            "path": "/spec/systemPrompt",
+                            "value": "You're an updated helpful AI assistant",
                         }
                     ],
                 )
                 await sleep(5)
-                updated_spec = deepcopy(SAMPLE_KB_DICT)
-                updated_spec["indexing"]["dbSecretName"] = "pgvector2-app"
-                updated_kb = AkamaiKnowledgeBase.from_spec(updated_spec)
+                updated_spec = deepcopy(SAMPLE_AGENT_DICT)
+                updated_spec["systemPrompt"] = "You're an updated helpful AI assistant"
+                updated_agent = AkamaiAgent.from_spec(updated_spec)
                 if expect_call:
                     mock_update.assert_called_once_with(
-                        namespace, "lifecycle-test", updated_kb
+                        namespace, "lifecycle-test", updated_agent
                     )
                 else:
                     mock_update.assert_not_called()
@@ -221,7 +221,7 @@ async def test_lifecycle(
                 await sleep(5)
                 if expect_call:
                     mock_delete.assert_called_once_with(
-                        namespace, "lifecycle-test", updated_kb
+                        namespace, "lifecycle-test", updated_agent
                     )
                 else:
                     mock_delete.assert_not_called()

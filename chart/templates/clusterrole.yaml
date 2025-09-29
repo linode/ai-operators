@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "akamai-ml-operator.fullname" . }}
+  name: {{ include "ai-operators.fullname" . }}
   labels:
-    {{- include "akamai-ml-operator.labels" . | nindent 4 }}
+    {{- include "ai-operators.labels" . | nindent 4 }}
 rules:
 # Watch and manage AkamaiKnowledgeBase custom resources
 - apiGroups: ["akamai.io"]
@@ -40,3 +40,15 @@ rules:
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: ["get", "list", "watch"]
+
+{{- if eq .Values.operator.name "agent-operator" }}
+- apiGroups: ["akamai.io"]
+  resources: ["akamaiagents"]
+  verbs: ["get", "list", "watch", "patch"]
+- apiGroups: ["akamai.io"]
+  resources: ["akamaiagents/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["akamai.io"]
+  resources: ["akamaiagents/finalizers"]
+  verbs: ["update"]
+{{- end }}

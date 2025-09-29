@@ -2,7 +2,7 @@ from typing import Any, Optional
 
 from attrs import define
 
-from .converter import converter
+from converter import converter
 
 
 @define

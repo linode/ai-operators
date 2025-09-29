@@ -54,6 +54,8 @@ affinity: {}
 operator:
   # Namespaces to watch (comma-separated, empty means all namespaces)
   watchNamespaces: ""
+    # Operator name ml-operator or agent-operator
+  name: "ml-operator"
   # Kopf configuration
   kopf:
     # Verbose log level for the operator
