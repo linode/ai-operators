@@ -7,10 +7,10 @@ spec:
   pipelineName: "custom-pipeline"
   pipelineParameters:
     url: "https://docs.example.com/api"
-    tableName: "custom_knowledge_base"
-    embeddingModel: "text-embedding-3-small"
-    embeddingApiBase: "https://api.openai.com/v1"
-    embedDim: 1536
-    embedBatchSize: "pgvector-cluster-rw"
-    secretName: "app"
-    secretNamespace: 5432
+    table_name: "custom_knowledge_base"
+    embedding_model: "text-embedding-3-small"
+    embedding_api_base: "https://api.openai.com/v1"
+    embed_dim: 1536
+    embed_batch_size: 500
+    secret_name: "pgvector-app"
+    secret_namespace: "team-kb"

@@ -37,7 +37,7 @@ spec:
                 type: string
                 minLength: 1
               pipelineParameters:
-                description: Flexible parameters passed to the kubeflow pipeline
+                description: Flexible parameters passed to the kubeflow pipeline. Parameters must be in snake_case.
                 type: object
                 additionalProperties: true
           status:

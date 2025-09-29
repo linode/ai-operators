@@ -20,8 +20,8 @@ def test_kb() -> AkamaiKnowledgeBase:
             "db_name": "testdb",
             "db_port": 5432,
             "db_secret_name": "postgres-secret",
-            'secret_namespace': 'test-namespace',
-            'table_name': 'test-kb',
+            "secret_namespace": "test-namespace",
+            "table_name": "test-kb",
         }
     )
 
