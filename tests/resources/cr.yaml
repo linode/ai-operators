@@ -1,17 +1,16 @@
 apiVersion: akamai.io/v1alpha1
 kind: AkamaiKnowledgeBase
 metadata:
-  name: example-kb
+  name: demo-kb
   namespace: team-kb
 spec:
-  data:
+  pipelineName: "custom-pipeline"
+  pipelineParameters:
     url: "https://docs.example.com/api"
-  indexing:
-    embeddingModelEndpoint: "https://api.openai.com/v1"
-    embeddingModelName: "text-embedding-3-small"
-    embeddingDimension: 1536
-    embeddingPipeline: "mock-doc-ingest-pipeline"
-    dbHostReadWrite: "pgvector-cluster-rw"
-    dbName: "app"
-    dbPort: 5432
-    dbSecretName: "pgvector-cluster-app"
+    table_name: "custom_knowledge_base"
+    embedding_model: "text-embedding-3-small"
+    embedding_api_base: "https://api.openai.com/v1"
+    embed_dim: 1536
+    embed_batch_size: 500
+    secret_name: "pgvector-app"
+    secret_namespace: "team-kb"

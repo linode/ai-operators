@@ -74,10 +74,10 @@ class KubeflowPipelinesService:
     def run_pipeline(self, namespace: str, name: str, kb: AkamaiKnowledgeBase) -> str:
         client = self._get_client()
 
-        pipeline_name = kb.indexing.embedding_pipeline
+        pipeline_name = kb.pipeline_name
         if not pipeline_name:
             raise ValueError(
-                f"No embedding pipeline specified for knowledge base {name}"
+                f"No pipeline specified for knowledge base {name}"
             )
 
         pipeline_id = client.get_pipeline_id(pipeline_name)
@@ -88,16 +88,8 @@ class KubeflowPipelinesService:
 
         experiment_id = self._get_or_create_experiment(name)
 
-        parameters = {
-            "url": kb.data.url,
-            "table_name": name,
-            "embedding_model": kb.indexing.embedding_model_name,
-            "embedding_api_base": kb.indexing.embedding_model_endpoint,
-            "embed_dim": kb.indexing.embedding_dimension,
-            "embed_batch_size": EMBED_BATCH_SIZE,
-            "secret_name": kb.indexing.db_secret_name,
-            "secret_namespace": namespace,
-        }
+        # Use the flexible pipeline parameters directly
+        parameters = dict(kb.pipeline_parameters)
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_result = client.run_pipeline(
