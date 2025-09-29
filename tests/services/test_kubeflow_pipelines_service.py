@@ -4,23 +4,26 @@ import pytest
 from kfp_server_api import V2beta1PipelineVersion
 
 from ml_operator.services.kubeflow_pipelines_service import KubeflowPipelinesService
-from ml_operator.resource import AkamaiKnowledgeBase, KBData, KBIndexing
+from ml_operator.resource import AkamaiKnowledgeBase
 
 
 @pytest.fixture
 def test_kb() -> AkamaiKnowledgeBase:
-    data = KBData(url="https://example.com/data")
-    indexing = KBIndexing(
-        embedding_model_endpoint="http://embedding-service",
-        embedding_model_name="test-model",
-        embedding_dimension=384,
-        embedding_pipeline="test-pipeline",
-        db_host_read_write="postgres-rw",
-        db_name="testdb",
-        db_port=5432,
-        db_secret_name="postgres-secret",
+    return AkamaiKnowledgeBase(
+        pipeline_name="test-pipeline",
+        pipeline_parameters={
+            "url": "https://example.com/data",
+            "embedding_model_endpoint": "http://embedding-service",
+            "embedding_model_name": "test-model",
+            "embedding_dimension": 384,
+            "db_host_read_write": "postgres-rw",
+            "db_name": "testdb",
+            "db_port": 5432,
+            "db_secret_name": "postgres-secret",
+            'secret_namespace': 'test-namespace',
+            'table_name': 'test-kb',
+        }
     )
-    return AkamaiKnowledgeBase(data=data, indexing=indexing)
 
 
 @pytest.fixture
@@ -149,12 +152,14 @@ def verify_pipeline_execution_calls(mock_client):
 
     expected_params = {
         "url": "https://example.com/data",
+        "embedding_model_endpoint": "http://embedding-service",
+        "embedding_model_name": "test-model",
+        "embedding_dimension": 384,
+        "db_host_read_write": "postgres-rw",
+        "db_name": "testdb",
+        "db_port": 5432,
+        "db_secret_name": "postgres-secret",
         "table_name": "test-kb",
-        "embedding_model": "test-model",
-        "embedding_api_base": "http://embedding-service",
-        "embed_dim": 384,
-        "embed_batch_size": 10,
-        "secret_name": "postgres-secret",
         "secret_namespace": "test-namespace",
     }
 
@@ -180,9 +185,9 @@ def test_successful_pipeline_run(mock_datetime, test_kb, service_with_mock_clien
 
 def test_missing_pipeline_name(test_kb, service_with_mock_client):
     service, mock_client = service_with_mock_client
-    test_kb.indexing.embedding_pipeline = ""
+    test_kb.pipeline_name = ""
 
-    with pytest.raises(ValueError, match="No embedding pipeline specified"):
+    with pytest.raises(ValueError, match="No pipeline specified"):
         service.run_pipeline("test-namespace", "test-kb", test_kb)
 
 

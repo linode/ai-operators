@@ -197,14 +197,14 @@ async def test_lifecycle(
                     body=[
                         {
                             "op": "replace",
-                            "path": "/spec/indexing/dbSecretName",
+                            "path": "/spec/pipelineParameters/dbSecretName",
                             "value": "pgvector2-app",
                         }
                     ],
                 )
                 await sleep(5)
                 updated_spec = deepcopy(SAMPLE_KB_DICT)
-                updated_spec["indexing"]["dbSecretName"] = "pgvector2-app"
+                updated_spec["pipelineParameters"]["dbSecretName"] = "pgvector2-app"
                 updated_kb = AkamaiKnowledgeBase.from_spec(updated_spec)
                 if expect_call:
                     mock_update.assert_called_once_with(

@@ -29,71 +29,17 @@ spec:
           spec:
             type: object
             required:
-            - data
-            - indexing
+            - pipelineName
+            - pipelineParameters
             properties:
-              data:
-                description: Data configuration for the knowledge base
+              pipelineName:
+                description: Name of the pipeline to execute
+                type: string
+                minLength: 1
+              pipelineParameters:
+                description: Flexible parameters passed to the kubeflow pipeline
                 type: object
-                required:
-                - url
-                properties:
-                  url:
-                    description: Public URL to the data source
-                    type: string
-                    format: uri
-                    pattern: '^https?://.+'
-              indexing:
-                description: Indexing configuration for embeddings and database
-                type: object
-                required:
-                - embeddingModelEndpoint
-                - embeddingModelName
-                - embeddingDimension
-                - embeddingPipeline
-                - dbHostReadWrite
-                - dbName
-                - dbPort
-                - dbSecretName
-                properties:
-                  embeddingModelEndpoint:
-                    description: URL to the embedding model endpoint (cluster local)
-                    type: string
-                  embeddingModelName:
-                    description: Name of the embedding model service
-                    type: string
-                    minLength: 1
-                    example: e5-mistral-7b
-                  embeddingDimension:
-                    description: Embedding dimension, must be compatible with model and database
-                    type: integer
-                    minimum: 1
-                    maximum: 16384
-                  embeddingPipeline:
-                    description: Name of the existing Kubeflow pipeline
-                    type: string
-                    minLength: 1
-                  dbHostReadWrite:
-                    description: Database host for read-write operations
-                    type: string
-                    minLength: 1
-                  dbHostRead:
-                    description: Database host for read-only operations
-                    type: string
-                    minLength: 1
-                  dbName:
-                    description: Database name in the database cluster
-                    type: string
-                    minLength: 1
-                  dbPort:
-                    description: Database port
-                    type: integer
-                    minimum: 1
-                    maximum: 65535
-                  dbSecretName:
-                    description: Name of the Kubernetes secret containing database credentials
-                    type: string
-                    pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                additionalProperties: true
           status:
             type: object
             properties:
@@ -147,18 +93,14 @@ spec:
                       type: string
                       format: date-time
     additionalPrinterColumns:
+    - name: Pipeline
+      type: string
+      description: Pipeline name
+      jsonPath: .spec.pipelineName
     - name: Progress
       type: string
       description: Indexing progress
       jsonPath: .status.indexingProgress
-    - name: Data URL
-      type: string
-      description: Data source URL
-      jsonPath: .spec.data.url
-    - name: DB Host
-      type: string
-      description: Database read-write host
-      jsonPath: .spec.indexing.dbHostReadWrite
     - name: Created
       type: string
       format: date-time
