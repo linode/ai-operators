@@ -35,7 +35,7 @@ spec:
         - kopf
         - run
         - -m
-        - {{ .Values.operator.name }}.main
+        - {{ .Values.operator.name | replace "-" "_" }}.main
         args:
         - --all-namespaces
         {{- if .Values.operator.kopf.verbose }}

@@ -4,7 +4,6 @@ from typing import Optional
 
 from kfp.client import Client
 
-from ..constants import EMBED_BATCH_SIZE
 from ..resource import AkamaiKnowledgeBase
 
 
@@ -76,9 +75,7 @@ class KubeflowPipelinesService:
 
         pipeline_name = kb.pipeline_name
         if not pipeline_name:
-            raise ValueError(
-                f"No pipeline specified for knowledge base {name}"
-            )
+            raise ValueError(f"No pipeline specified for knowledge base {name}")
 
         pipeline_id = client.get_pipeline_id(pipeline_name)
         if not pipeline_id:

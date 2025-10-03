@@ -19,10 +19,10 @@ def test_kb() -> AkamaiKnowledgeBase:
             "db_host_read_write": "postgres-rw",
             "db_name": "testdb",
             "db_port": 5432,
-            "db_secret_name": "postgres-secret",
-            "secret_namespace": "test-namespace",
+            "db_secret_name": "postgres-secret",  # pragma: allowlist secret
+            "secret_namespace": "test-namespace",  # pragma: allowlist secret
             "table_name": "test-kb",
-        }
+        },
     )
 
 
@@ -158,9 +158,9 @@ def verify_pipeline_execution_calls(mock_client):
         "db_host_read_write": "postgres-rw",
         "db_name": "testdb",
         "db_port": 5432,
-        "db_secret_name": "postgres-secret",
+        "db_secret_name": "postgres-secret",  # pragma: allowlist secret
         "table_name": "test-kb",
-        "secret_namespace": "test-namespace",
+        "secret_namespace": "test-namespace",  # pragma: allowlist secret
     }
 
     mock_client.run_pipeline.assert_called_once_with(

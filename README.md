@@ -29,7 +29,137 @@ ml-operator
 └── tests         # pytest modules and resources
 ```
 
-## Testing
+## Testing agent-operator
+
+The agent-operator can be deployed using two different providers:
+- **Linode/K8s Provider** (`PROVIDER=linode`): Uses `kubectl` to deploy agents directly
+- **APL Provider** (`PROVIDER=apl`): Uses ArgoCD to deploy agents
+
+### Testing with Linode/K8s Provider
+
+**1. Create Kind cluster**
+```bash
+kind create cluster --name agent-operator-test
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+```
+
+**2. Create test namespace**
+```bash
+kubectl create namespace team-demo
+```
+
+**3. Build and deploy agent-operator**
+```bash
+# Generate requirements.txt
+uv run poe export-deps
+
+# Build Docker image with agent chart included
+docker build \
+  --build-arg OPERATOR_MODULE=agent_operator \
+  -t agent-operator:local .
+
+# Load image into Kind cluster
+kind load docker-image agent-operator:local --name agent-operator-test
+
+# Deploy the agent-operator with Linode provider
+helm install -n team-demo agent-operator ./chart \
+  --set operator.name=agent-operator \
+  --set image.repository=agent-operator \
+  --set image.tag=local \
+  --set image.pullPolicy=Never \
+  --set env.PROVIDER=linode \
+  --wait \
+  --timeout=5m
+```
+
+**4. Test the operator**
+```bash
+# Create a test agent resource
+kubectl apply -f tests/resources/cr.yaml
+kubectl apply -f tests/resources/agent-cr.yaml
+kubectl apply -f tests/resources/kb-crd.yaml
+
+# Check the agent resource
+kubectl get akamaiagents -n team-demo
+
+# Watch operator logs
+kubectl logs -l app.kubernetes.io/name=agent-operator -n team-demo -f
+```
+
+### Testing with APL/ArgoCD Provider
+
+**1. Create Kind cluster**
+```bash
+kind create cluster --name agent-operator-test
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+```
+
+**2. Install ArgoCD**
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl wait --for=condition=Ready pods --all -n argocd --timeout=600s
+```
+
+**3. Create test namespace**
+```bash
+kubectl create namespace team-demo
+```
+
+**4. Build and deploy agent-operator**
+```bash
+# Generate requirements.txt
+uv run poe export-deps
+
+# Build Docker image with agent chart included
+docker build \
+  --build-arg OPERATOR_MODULE=agent_operator \
+  --no-cache \
+  -t agent-operator:local .
+
+# Load image into Kind cluster
+kind load docker-image agent-operator:local --name agent-operator-test
+
+# Deploy the agent-operator with APL provider
+helm install -n team-demo agent-operator ./chart \
+  --set operator.name=agent-operator \
+  --set image.repository=agent-operator \
+  --set image.tag=local \
+  --set image.pullPolicy=Never \
+  --set env.PROVIDER=apl \
+  --set env.AGENT_CHART_REPO_URL=https://github.com/linode/ai-operators.git \
+  --set env.AGENT_CHART_REPO_REVISION=main \
+  --set env.AGENT_CHART_PATH=agent \
+  --wait \
+  --timeout=5m
+```
+
+**5. Test the operator**
+```bash
+# Create a test agent resource
+kubectl apply -f tests/resources/cr.yaml
+kubectl apply -f tests/resources/agent-cr.yaml
+kubectl apply -f tests/resources/kb-crd.yaml
+
+# Check the agent resource
+kubectl get akamaiagents -n team-demo
+
+# Check ArgoCD application created
+kubectl get applications -n argocd
+
+# Watch operator logs
+kubectl logs -l app.kubernetes.io/name=agent-operator -n team-demo -f
+```
+
+**6. Cleanup**
+```bash
+# Delete the Kind cluster
+kind delete cluster --name agent-operator-test
+```
+
+
+
+## Testing ml-operator
 
 ### Local Development Setup with Kind
 

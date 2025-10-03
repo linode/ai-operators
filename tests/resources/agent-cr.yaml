@@ -1,0 +1,17 @@
+apiVersion: akamai.io/v1alpha1
+kind: AkamaiAgent
+metadata:
+  name: demo-agent
+  namespace: team-demo
+spec:
+  foundationModel: llama
+  systemPrompt: "You are a helpful AI assistant that helps users with their questions."
+  tools:
+  - type: knowledgeBase
+    name: demo-kb
+    description: "Search the demo knowledge base for information about products and services"
+  - type: function
+    name: web_search
+    description: "Get a list of available models in the cluster"
+  - type: mcpServer
+    endpoint: "https://mcp.example.com/api"

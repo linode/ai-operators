@@ -71,3 +71,13 @@ async def deleted(spec, meta, logger, **_):
     await AGENT_HANDLER.deleted(
         meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
     )
+
+
+def main():
+    logging.basicConfig(level=logging.DEBUG)
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    kopf.run(clusterwide=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -2,7 +2,7 @@ from typing import Any
 
 from attrs import define
 
-from converter import converter
+from ml_operator.converter import converter
 
 
 @define

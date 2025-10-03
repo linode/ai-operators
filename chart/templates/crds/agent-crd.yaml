@@ -43,10 +43,30 @@ spec:
                 type: string
                 minLength: 1
                 maxLength: 4096
-              knowledgeBase:
-                description: Optional reference to a knowledge base resource
-                type: string
-                pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+              tools:
+                description: Tools available to the agent
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      description: Type of tool (knowledgeBase, function, mcpServer)
+                      type: string
+                      enum:
+                      - knowledgeBase
+                      - function
+                      - mcpServer
+                    name:
+                      description: Name of the tool
+                      type: string
+                    description:
+                      description: Description of how the agent can use this tool
+                      type: string
+                    endpoint:
+                      description: Endpoint for mcpServer type tools
+                      type: string
+                  required:
+                  - type
           status:
             type: object
             properties:
@@ -100,10 +120,10 @@ spec:
       type: string
       description: Foundation model
       jsonPath: .spec.foundationModel
-    - name: Knowledge Base
+    - name: Tools
       type: string
-      description: Linked knowledge base
-      jsonPath: .spec.knowledgeBase
+      description: Number of tools
+      jsonPath: .spec.tools.length
     - name: Status
       type: string
       description: Agent deployment status
