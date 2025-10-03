@@ -4,8 +4,8 @@ from typing import Dict, Any, Optional
 from ..resource import AkamaiAgent
 from ..constants import PROVIDER
 from ..services.agent_data import create_agent_data
-from ..services.argocd_service import ArgoCDDeployer
-from ..services.helm_service import K8sDeploymentService
+from ..services.argocd_deployer import ArgoCDDeployer
+from ..services.k8s_deployer import K8sDeployer
 from ..services.status_service import StatusService
 
 
@@ -24,7 +24,7 @@ class AgentHandler:
         if PROVIDER == "apl":
             self.agent_service = ArgoCDDeployer()
         else:
-            self.agent_service = K8sDeploymentService()
+            self.agent_service = K8sDeployer()
         self.status_service = StatusService()
 
     async def created(self, namespace: str, name: str, agent: AkamaiAgent):

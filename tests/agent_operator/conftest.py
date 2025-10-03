@@ -1,4 +1,4 @@
-from agent_operator.resource import AkamaiAgent
+from ai_operators.agent_operator import AkamaiAgent
 
 # Global test objects, reused in tests
 SAMPLE_AGENT_DICT = {

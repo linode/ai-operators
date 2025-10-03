@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from attrs import define, field
 
-from agent_operator.resource import AkamaiAgent
+from ai_operators.agent_operator.resource import AkamaiAgent
 from .k8s import fetch_knowledge_base_config, get_foundation_model_endpoint
 
 

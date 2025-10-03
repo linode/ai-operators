@@ -17,7 +17,10 @@ from aiohttp import (
 )
 from attrs import define
 
-from ml_operator.pipelines.config import PipelineSourceConfig, PipelineSourceAuth
+from ai_operators.ml_operator.pipelines.config import (
+    PipelineSourceConfig,
+    PipelineSourceAuth,
+)
 
 logger = logging.getLogger(__name__)
 

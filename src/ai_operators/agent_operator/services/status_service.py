@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from datetime import datetime, timezone
 
 from kubernetes_asyncio import client
@@ -11,32 +11,27 @@ from ..constants import CUSTOM_API_ARGS
 class StatusService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self._custom_api: Optional[client.CustomObjectsApi] = None
-
-    async def _get_custom_api(self) -> client.CustomObjectsApi:
-        if not self._custom_api:
-            async with client.ApiClient() as api_client:
-                self._custom_api = client.CustomObjectsApi(api_client)
-        return self._custom_api
 
     async def _update_agent_status(
         self, namespace: str, name: str, status_update: Dict[str, Any]
     ) -> None:
         try:
-            custom_api = await self._get_custom_api()
-
             # Add timestamp to status update
             status_update["lastUpdated"] = datetime.now(timezone.utc).isoformat()
 
-            # Update the status subresource
-            await custom_api.patch_namespaced_custom_object_status(
-                group=CUSTOM_API_ARGS["group"],
-                version=CUSTOM_API_ARGS["version"],
-                namespace=namespace,
-                plural=CUSTOM_API_ARGS["plural"],
-                name=name,
-                body={"status": status_update},
-            )
+            # Update the status subresource using merge patch
+            async with client.ApiClient() as api_client:
+                custom_api = client.CustomObjectsApi(api_client)
+                await custom_api.patch_namespaced_custom_object_status(
+                    group=CUSTOM_API_ARGS["group"],
+                    version=CUSTOM_API_ARGS["version"],
+                    namespace=namespace,
+                    plural=CUSTOM_API_ARGS["plural"],
+                    name=name,
+                    body={"status": status_update},
+                    _content_type="application/merge-patch+json",
+                )
+
             self.logger.info(
                 f"Updated status for AkamaiAgent {name} in namespace {namespace}"
             )

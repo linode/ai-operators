@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 import pytest
 from kfp_server_api import V2beta1PipelineVersion
 
-from ml_operator.services.kubeflow_pipelines_service import KubeflowPipelinesService
-from ml_operator.resource import AkamaiKnowledgeBase
+from ai_operators.ml_operator import KubeflowPipelinesService
+from ai_operators.ml_operator import AkamaiKnowledgeBase
 
 
 @pytest.fixture

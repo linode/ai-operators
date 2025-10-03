@@ -14,4 +14,4 @@ KB_CUSTOM_API_ARGS = {
 }
 
 PROVIDER = os.getenv("PROVIDER", "apl")
-CHART_PATH = os.getenv("CHART_PATH", "agent")
+CHART_PATH = os.getenv("CHART_PATH", "/app/agent")

@@ -1,5 +1,5 @@
 [project]
-name = "ml-operator"
+name = "ai-operators"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -35,7 +35,7 @@ _fix = "ruff check --fix ."
 format = "ruff format ."
 fix = ["_fix", "format"]
 export-deps = "uv export --format=requirements.txt --output-file=dependencies/requirements.txt --no-dev --no-emit-project"
-dev = "kopf run -A -m ml_operator --verbose --dev"
+dev = "kopf run -A -m ai_operators.kb_operator --verbose --dev"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

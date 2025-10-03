@@ -2,7 +2,7 @@ from typing import Any, List, Dict
 
 from attrs import define, field
 
-from agent_operator.converter import converter
+from ai_operators.agent_operator.converter import converter
 
 
 @define

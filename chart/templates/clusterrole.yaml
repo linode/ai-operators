@@ -42,6 +42,7 @@ rules:
   verbs: ["get", "list", "watch"]
 
 {{- if eq .Values.operator.name "agent-operator" }}
+# AkamaiAgent custom resources
 - apiGroups: ["akamai.io"]
   resources: ["akamaiagents"]
   verbs: ["get", "list", "watch", "patch"]
@@ -51,4 +52,34 @@ rules:
 - apiGroups: ["akamai.io"]
   resources: ["akamaiagents/finalizers"]
   verbs: ["update"]
+# TODO strict this down further for only some namespaces
+# Service discovery for foundation models and agent services
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+# ConfigMaps for agent configuration
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+# PVCs for agent storage
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+# ServiceAccounts for agents
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+# RBAC for agents
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+# Deployment management
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
 {{- end }}

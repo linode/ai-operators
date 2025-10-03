@@ -74,10 +74,13 @@ helm install -n team-demo agent-operator ./chart \
 
 **4. Test the operator**
 ```bash
+# Create a test foundation model service (required for agent deployment)
+kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
+kubectl label service llama-service modelType=foundation modelName=llama -n team-demo
+
 # Create a test agent resource
-kubectl apply -f tests/resources/cr.yaml
-kubectl apply -f tests/resources/agent-cr.yaml
 kubectl apply -f tests/resources/kb-crd.yaml
+kubectl apply -f tests/resources/agent-cr.yaml
 
 # Check the agent resource
 kubectl get akamaiagents -n team-demo
@@ -119,6 +122,9 @@ docker build \
 
 # Load image into Kind cluster
 kind load docker-image agent-operator:local --name agent-operator-test
+````
+
+```bash
 
 # Deploy the agent-operator with APL provider
 helm install -n team-demo agent-operator ./chart \
@@ -136,10 +142,13 @@ helm install -n team-demo agent-operator ./chart \
 
 **5. Test the operator**
 ```bash
+# Create a test foundation model service (required for agent deployment)
+kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
+kubectl label service llama-service modelType=foundation modelName=llama -n team-demo
+
 # Create a test agent resource
-kubectl apply -f tests/resources/cr.yaml
-kubectl apply -f tests/resources/agent-cr.yaml
 kubectl apply -f tests/resources/kb-crd.yaml
+kubectl apply -f tests/resources/agent-cr.yaml
 
 # Check the agent resource
 kubectl get akamaiagents -n team-demo

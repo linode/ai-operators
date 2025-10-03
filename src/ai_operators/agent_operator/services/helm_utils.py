@@ -56,8 +56,11 @@ def template_agent_chart(
         values_file = f.name
 
     try:
-        # Run helm template command
-        manifest_file = os.path.join(output_dir, f"{agent_name}.yaml")
+        # Create output directory for this agent's manifests
+        agent_output_dir = os.path.join("/tmp/agents", agent_name)
+        os.makedirs(agent_output_dir, exist_ok=True)
+
+        # Run helm template command with --output-dir
         cmd = [
             "helm",
             "template",
@@ -67,18 +70,20 @@ def template_agent_chart(
             values_file,
             "--namespace",
             namespace,
+            "--output-dir",
+            agent_output_dir,
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        # Set HOME to /tmp for helm to create cache directories
+        env = os.environ.copy()
+        env["HOME"] = "/tmp"
 
-        # Write manifests to file
-        with open(manifest_file, "w") as f:
-            f.write(result.stdout)
+        subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
 
         logger.info(
-            f"Successfully templated chart for agent {agent_name} to {manifest_file}"
+            f"Successfully templated chart for agent {agent_name} to {agent_output_dir}"
         )
-        return manifest_file
+        return agent_output_dir
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Helm template failed for agent {agent_name}: {e.stderr}")

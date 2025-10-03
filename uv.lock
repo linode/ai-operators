@@ -7,6 +7,51 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "ai-operators"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiohttp", extra = ["speedups"] },
+    { name = "attrs" },
+    { name = "cattrs" },
+    { name = "kfp" },
+    { name = "kopf", extra = ["uvloop"] },
+    { name = "kubernetes-asyncio" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "aioresponses" },
+    { name = "poethepoet" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", extras = ["speedups"], specifier = ">=3.12.15" },
+    { name = "attrs", specifier = ">=25.3.0" },
+    { name = "cattrs", specifier = ">=25.2.0" },
+    { name = "kfp", specifier = ">=2.14.3" },
+    { name = "kopf", extras = ["uvloop"], specifier = ">=1.38.0" },
+    { name = "kubernetes-asyncio", specifier = ">=33.3.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aioresponses", specifier = ">=0.7.8" },
+    { name = "poethepoet", specifier = ">=0.37.0" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-asyncio", specifier = ">=1.2.0" },
+    { name = "pytest-mock", specifier = ">=3.15.0" },
+    { name = "ruff", specifier = ">=0.12.12" },
+]
+
+[[package]]
 name = "aiodns"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -599,51 +644,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/41/5f/c175f86b92ff5f19444e3be1423819491ae9859d1f6f7d83d404eab8b10d/kubernetes_asyncio-33.3.0.tar.gz", hash = "sha256:4c59cd4c99b197995ef38ef0c8ff45aab24b84830ebf0ddcb67355caea9674c9", size = 1124931, upload-time = "2025-08-11T21:39:37.825Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/20/90985f53c141e6f3464b7295a617ffd36574168861882f9291847d09f9b1/kubernetes_asyncio-33.3.0-py3-none-any.whl", hash = "sha256:25e6e265932ebb1aeecbdb30a107dbef3ee0bcd388ed12d092be70915733982b", size = 2174591, upload-time = "2025-08-11T21:39:35.697Z" },
-]
-
-[[package]]
-name = "ml-operator"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiohttp", extra = ["speedups"] },
-    { name = "attrs" },
-    { name = "cattrs" },
-    { name = "kfp" },
-    { name = "kopf", extra = ["uvloop"] },
-    { name = "kubernetes-asyncio" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "aioresponses" },
-    { name = "poethepoet" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", extras = ["speedups"], specifier = ">=3.12.15" },
-    { name = "attrs", specifier = ">=25.3.0" },
-    { name = "cattrs", specifier = ">=25.2.0" },
-    { name = "kfp", specifier = ">=2.14.3" },
-    { name = "kopf", extras = ["uvloop"], specifier = ">=1.38.0" },
-    { name = "kubernetes-asyncio", specifier = ">=33.3.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "aioresponses", specifier = ">=0.7.8" },
-    { name = "poethepoet", specifier = ">=0.37.0" },
-    { name = "pre-commit", specifier = ">=4.3.0" },
-    { name = "pytest", specifier = ">=8.4.2" },
-    { name = "pytest-asyncio", specifier = ">=1.2.0" },
-    { name = "pytest-mock", specifier = ">=3.15.0" },
-    { name = "ruff", specifier = ">=0.12.12" },
 ]
 
 [[package]]

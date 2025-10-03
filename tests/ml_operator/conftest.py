@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from kfp.compiler import Compiler
 
-from ml_operator.resource import AkamaiKnowledgeBase
+from ai_operators.ml_operator import AkamaiKnowledgeBase
 
 # Global test objects, reused in tests
 SAMPLE_KB_DICT = {
@@ -21,7 +21,7 @@ SAMPLE_KB_DICT = {
         "db_host_read": "pgvector-r.team-demo.svc.cluster.local",
         "db_name": "app",
         "db_port": 5432,
-        "db_secret_name": "pgvector-app",
+        "db_secret_name": "pgvector-app",  # pragma: allowlist secret
     },
 }
 
@@ -36,7 +36,7 @@ SAMPLE_KB_OBJECT = AkamaiKnowledgeBase(
         "db_host_read": "pgvector-r.team-demo.svc.cluster.local",
         "db_name": "app",
         "db_port": 5432,
-        "db_secret_name": "pgvector-app",
+        "db_secret_name": "pgvector-app",  # pragma: allowlist secret
     },
 )
 
