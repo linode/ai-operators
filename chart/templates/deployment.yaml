@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "akamai-ml-operator.fullname" . }}
+  name: {{ include "ai-operators.fullname" . }}
   labels:
-    {{- include "akamai-ml-operator.labels" . | nindent 4 }}
+    {{- include "ai-operators.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "akamai-ml-operator.selectorLabels" . | nindent 6 }}
+      {{- include "ai-operators.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -16,13 +16,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "akamai-ml-operator.selectorLabels" . | nindent 8 }}
+        {{- include "ai-operators.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "akamai-ml-operator.serviceAccountName" . }}
+      serviceAccountName: {{ include "ai-operators.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -35,7 +35,7 @@ spec:
         - kopf
         - run
         - -m
-        - ml_operator.main
+        - {{ .Values.operator.name }}.main
         args:
         - --all-namespaces
         {{- if .Values.operator.kopf.verbose }}

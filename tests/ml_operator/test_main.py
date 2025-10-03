@@ -20,9 +20,9 @@ from kubernetes_asyncio.client.api_client import ApiClient
 
 from ml_operator.constants import CUSTOM_API_ARGS
 from ml_operator.resource import AkamaiKnowledgeBase
-from .conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
+from tests.ml_operator.conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
-_DIR = Path(__file__).parent
+_DIR = Path(__file__).parent.parent
 
 # All tests in this module only run if env variable USE_CLUSTER is set
 #
@@ -88,7 +88,7 @@ async def crd(k8s):
     Also drops all related CRs.
     Note that it fails all dependent tests, if the CRD is not valid.
     """
-    with open(_DIR / ".." / "chart/crds/crd.yaml", "r") as f:
+    with open(_DIR / "resources/kb-crd.yaml", "r") as f:
         crd = yaml.safe_load(f)
     # Validate that CRD corresponds with code constants
     assert crd["spec"]["group"] == CUSTOM_API_ARGS["group"]
@@ -156,13 +156,15 @@ def create_sample_cr(name: str) -> dict[str, Any]:
     }
 
 
-@patch("ml_operator.main.HANDLER.created")
-@patch("ml_operator.main.HANDLER.updated")
-@patch("ml_operator.main.HANDLER.deleted")
+@patch("ml_operator.main.KB_HANDLER.wait_for_completion")
+@patch("ml_operator.main.KB_HANDLER.created")
+@patch("ml_operator.main.KB_HANDLER.updated")
+@patch("ml_operator.main.KB_HANDLER.deleted")
 async def test_lifecycle(
     mock_delete,
     mock_update,
     mock_create,
+    mock_wait,
     crd: None,
     runner: KopfRunner,
     namespaces: list[str],
@@ -174,6 +176,7 @@ async def test_lifecycle(
             mock_create.reset_mock()
             mock_update.reset_mock()
             mock_delete.reset_mock()
+            mock_wait.reset_mock()
 
             async with ApiClient() as api:
                 custom_api = CustomObjectsApi(api)
@@ -187,6 +190,7 @@ async def test_lifecycle(
                     mock_create.assert_called_once_with(
                         namespace, "lifecycle-test", SAMPLE_KB_OBJECT
                     )
+                    mock_wait.assert_called()
                 else:
                     mock_create.assert_not_called()
 
@@ -210,6 +214,7 @@ async def test_lifecycle(
                     mock_update.assert_called_once_with(
                         namespace, "lifecycle-test", updated_kb
                     )
+                    mock_wait.assert_called()
                 else:
                     mock_update.assert_not_called()
 

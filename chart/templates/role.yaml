@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "akamai-ml-operator.fullname" . }}
+  name: {{ include "ai-operators.fullname" . }}
   labels:
-    {{- include "akamai-ml-operator.labels" . | nindent 4 }}
+    {{- include "ai-operators.labels" . | nindent 4 }}
 rules:
 # Operator configuration
 - apiGroups: [""]

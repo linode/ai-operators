@@ -1,18 +1,22 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "akamai-ml-operator.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- define "ai-operators.name" -}}
+{{- if .Values.nameOverride }}
+{{- .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "akamai-%s" .Values.operator.name | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "akamai-ml-operator.fullname" -}}
+{{- define "ai-operators.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- $name := include "ai-operators.name" . }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,36 +28,37 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "akamai-ml-operator.chart" -}}
+{{- define "ai-operators.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "akamai-ml-operator.labels" -}}
-helm.sh/chart: {{ include "akamai-ml-operator.chart" . }}
-{{ include "akamai-ml-operator.selectorLabels" . }}
+{{- define "ai-operators.labels" -}}
+helm.sh/chart: {{ include "ai-operators.chart" . }}
+{{ include "ai-operators.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+apl.io/operator-type: {{ .Values.operator.name }}
 {{- end }}
 
 {{/*
 Selector labels
 */}}
-{{- define "akamai-ml-operator.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "akamai-ml-operator.name" . }}
+{{- define "ai-operators.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ai-operators.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "akamai-ml-operator.serviceAccountName" -}}
+{{- define "ai-operators.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "akamai-ml-operator.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "ai-operators.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
