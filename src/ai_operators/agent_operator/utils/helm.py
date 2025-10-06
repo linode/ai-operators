@@ -6,35 +6,20 @@ import tempfile
 import yaml
 from typing import Dict, Any
 
-from .agent_data import AgentData
-from ..constants import CHART_PATH
+from ai_operators.agent_operator.model.agent_data import AgentData
+from ai_operators.agent_operator.model.agent_config import AgentConfig
+from ai_operators.agent_operator.constants import CHART_PATH
 
 logger = logging.getLogger(__name__)
 
 
-def _create_agent_config(agent_data: AgentData) -> Dict[str, Any]:
-    """Create agent configuration dict to be stored in ConfigMap."""
-    return {
-        "namespace": agent_data.namespace,
-        "name": agent_data.name,
-        "foundation_model": {
-            "name": agent_data.foundation_model,
-            "endpoint": agent_data.foundation_model_endpoint,
-        },
-        "system_prompt": agent_data.system_prompt,
-        "routes": agent_data.routes,
-        "tools": agent_data.tools,
-    }
-
-
 def create_helm_values(agent_data: AgentData) -> Dict[str, Any]:
     """Create Helm values for agent chart deployment."""
-    # Generate agent config
-    agent_config = _create_agent_config(agent_data)
+    agent_config = AgentConfig.from_agent_data(agent_data)
 
     values = {
         "nameOverride": agent_data.name,
-        "agentConfig": json.dumps(agent_config, indent=2),
+        "agentConfig": json.dumps(agent_config.to_dict(), indent=2),
     }
 
     return values

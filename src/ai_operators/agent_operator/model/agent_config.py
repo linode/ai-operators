@@ -1,0 +1,56 @@
+from typing import Dict, Any, List
+from attrs import define
+
+from ai_operators.agent_operator.model.agent_data import AgentData
+
+
+@define
+class FoundationModelConfig:
+    """Configuration for foundation model."""
+
+    name: str
+    endpoint: str
+
+    def to_dict(self) -> Dict[str, str]:
+        return {
+            "name": self.name,
+            "endpoint": self.endpoint,
+        }
+
+
+@define
+class AgentConfig:
+    """Agent configuration to be stored in ConfigMap."""
+
+    namespace: str
+    name: str
+    foundation_model: FoundationModelConfig
+    system_prompt: str
+    routes: List[Dict[str, Any]]
+    tools: List[Dict[str, Any]]
+
+    @classmethod
+    def from_agent_data(cls, agent_data: AgentData) -> "AgentConfig":
+        """Create AgentConfig from AgentData."""
+        return cls(
+            namespace=agent_data.namespace,
+            name=agent_data.name,
+            foundation_model=FoundationModelConfig(
+                name=agent_data.foundation_model,
+                endpoint=agent_data.foundation_model_endpoint,
+            ),
+            system_prompt=agent_data.system_prompt,
+            routes=agent_data.routes,
+            tools=agent_data.tools,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict format for ConfigMap."""
+        return {
+            "namespace": self.namespace,
+            "name": self.name,
+            "foundation_model": self.foundation_model.to_dict(),
+            "system_prompt": self.system_prompt,
+            "routes": self.routes,
+            "tools": self.tools,
+        }

@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
 
-def get_application_template(
+def get_argocd_application(
     app_name: str,
     argocd_namespace: str,
     target_namespace: str,

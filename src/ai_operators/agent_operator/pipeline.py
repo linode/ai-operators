@@ -1,3 +1,14 @@
+"""
+WARNING: Changes to this file should be reflected in the agent/templates/pipeline-configmap.yaml
+
+Defines the Pipeline class for managing a complex AI agent with various tools integration.
+
+This module establishes an AI agent pipeline for handling tasks such as working with
+knowledge bases, function tools, and external MCP servers, configured dynamically
+through JSON. It supports embedding integration and vector-based indexing,
+using a range of third-party libraries.
+"""
+
 import json
 import anyio
 from typing import Dict, Any
@@ -95,10 +106,15 @@ class Pipeline:
                 tools.append(tool)
 
             elif tool_type == "mcpServer":
-                # MCP server tool
-                mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
-                mcp_tool = McpToolSpec(client=mcp_client)
-                tools.extend(await mcp_tool.to_tool_list_async())
+                # MCP server tool - skip if endpoint is unreachable
+                try:
+                    mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
+                    mcp_tool = McpToolSpec(client=mcp_client)
+                    tools.extend(await mcp_tool.to_tool_list_async())
+                except Exception as e:
+                    print(
+                        f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}"
+                    )
 
         system_prompt = self.agent_config.get(
             "system_prompt", "You are a helpful AI assistant."
@@ -149,10 +165,7 @@ class Pipeline:
         }
 
     def _web_search(self, query: str) -> str:
-        """
-        Search the web for information.
-
-        """
+        """Search the web for information."""
         ...
 
     def pipe(self, user_message, model_id, messages, body):

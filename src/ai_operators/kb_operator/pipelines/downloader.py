@@ -17,7 +17,7 @@ from aiohttp import (
 )
 from attrs import define
 
-from ai_operators.ml_operator.pipelines.config import (
+from ai_operators.kb_operator.pipelines.config import (
     PipelineSourceConfig,
     PipelineSourceAuth,
 )

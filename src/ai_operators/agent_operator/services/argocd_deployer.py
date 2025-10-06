@@ -5,16 +5,15 @@ from typing import Dict, Any, Optional
 
 from kubernetes_asyncio.client import ApiException
 
-from .agent_data import AgentData
-from .argocd_templates import get_application_template
-from .helm_utils import create_helm_values
-from .k8s import (
+from ai_operators.agent_operator.model.agent_data import AgentData
+from ai_operators.agent_operator.utils.argocd import get_argocd_application
+from ai_operators.agent_operator.utils.helm import create_helm_values
+from ai_operators.agent_operator.utils.k8s import (
     create_custom_object,
     get_custom_object,
     patch_custom_object,
     delete_custom_object,
 )
-
 
 ARGOCD_API_ARGS = {
     "group": "argoproj.io",
@@ -24,39 +23,44 @@ ARGOCD_API_ARGS = {
 }
 
 
+def _get_app_name(agent_data: AgentData) -> str:
+    """Get ArgoCD application name for an agent."""
+    return f"agent-{agent_data.name}"
+
+
+def _create_argocd_application(agent_data: AgentData) -> Dict[str, Any]:
+    """Create ArgoCD Application CR definition."""
+    helm_values = create_helm_values(agent_data)
+
+    git_repo_url = os.getenv(
+        "AGENT_CHART_REPO_URL", "https://github.com/linode/ai-operators.git"
+    )
+    git_target_revision = os.getenv("AGENT_CHART_REPO_REVISION", "main")
+    chart_path = os.getenv("AGENT_CHART_PATH", "agent")
+
+    return get_argocd_application(
+        app_name=_get_app_name(agent_data),
+        argocd_namespace=ARGOCD_API_ARGS["namespace"],
+        target_namespace=agent_data.namespace,
+        git_repo_url=git_repo_url,
+        chart_path=chart_path,
+        git_target_revision=git_target_revision,
+        helm_values=yaml.dump(helm_values),
+        api_group=ARGOCD_API_ARGS["group"],
+        api_version=ARGOCD_API_ARGS["version"],
+    )
+
+
 class ArgoCDDeployer:
     """Service to manage ArgoCD applications for agent deployments."""
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def _create_argocd_application(self, agent_data: AgentData) -> Dict[str, Any]:
-        """Create ArgoCD Application CR definition."""
-        helm_values = create_helm_values(agent_data)
-
-        git_repo_url = os.getenv(
-            "AGENT_CHART_REPO_URL", "https://github.com/linode/ai-operators.git"
-        )
-        git_target_revision = os.getenv("AGENT_CHART_REPO_REVISION", "main")
-        chart_path = os.getenv("AGENT_CHART_PATH", "agent")
-        app_name = f"agent-{agent_data.name}"
-
-        return get_application_template(
-            app_name=app_name,
-            argocd_namespace=ARGOCD_API_ARGS["namespace"],
-            target_namespace=agent_data.namespace,
-            git_repo_url=git_repo_url,
-            chart_path=chart_path,
-            git_target_revision=git_target_revision,
-            helm_values=yaml.dump(helm_values),
-            api_group=ARGOCD_API_ARGS["group"],
-            api_version=ARGOCD_API_ARGS["version"],
-        )
-
     async def create_agent(self, agent_data: AgentData) -> str:
         """Create ArgoCD application for agent deployment."""
-        application = self._create_argocd_application(agent_data)
-        app_name = application["metadata"]["name"]
+        app_name = _get_app_name(agent_data)
+        application = _create_argocd_application(agent_data)
 
         try:
             await create_custom_object(
@@ -86,8 +90,8 @@ class ArgoCDDeployer:
 
     async def update_agent(self, agent_data: AgentData) -> str:
         """Update existing ArgoCD application for agent deployment."""
-        application = self._create_argocd_application(agent_data)
-        app_name = application["metadata"]["name"]
+        app_name = _get_app_name(agent_data)
+        application = _create_argocd_application(agent_data)
 
         try:
             await patch_custom_object(
@@ -110,7 +114,7 @@ class ArgoCDDeployer:
 
     async def delete_agent(self, agent_data: AgentData) -> None:
         """Delete ArgoCD application for agent."""
-        app_name = f"agent-{agent_data.name}"
+        app_name = _get_app_name(agent_data)
 
         try:
             await delete_custom_object(
@@ -136,11 +140,12 @@ class ArgoCDDeployer:
                 )
                 raise
 
+    # TODO make this strongly typed
     async def get_deployment_status(
         self, agent_data: AgentData
     ) -> Optional[Dict[str, Any]]:
         """Get the status of an ArgoCD application."""
-        app_name = f"agent-{agent_data.name}"
+        app_name = _get_app_name(agent_data)
 
         app = await get_custom_object(
             group=ARGOCD_API_ARGS["group"],

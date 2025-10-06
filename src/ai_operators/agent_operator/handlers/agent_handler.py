@@ -1,22 +1,24 @@
 import logging
-from typing import Dict, Any, Optional
 
-from ..resource import AkamaiAgent
-from ..constants import PROVIDER
-from ..services.agent_data import create_agent_data
-from ..services.argocd_deployer import ArgoCDDeployer
-from ..services.k8s_deployer import K8sDeployer
-from ..services.status_service import StatusService
+from ai_operators.agent_operator.constants import PROVIDER
+from ai_operators.agent_operator.model.agent_data import create_agent_data, AgentData
+from ai_operators.agent_operator.resource import AkamaiAgent
+from ai_operators.agent_operator.services.argocd_deployer import ArgoCDDeployer
+from ai_operators.agent_operator.services.k8s_deployer import K8sDeployer
+from ai_operators.agent_operator.utils.status import (
+    get_agent_deployed_status,
+    get_agent_failed_status,
+)
 
 
 class AgentHandler:
     """
     Handles AkamaiAgent CR lifecycle events (create, update, delete).
 
-    Uses duck typing to delegate deployment operations to either ArgoCDDeploymentService
-    or HelmDeploymentService based on the PROVIDER environment variable. Both services
+    Uses duck typing to delegate deployment operations to either ArgoCDDeployer
+    or K8sDeployer based on the PROVIDER environment variable. Both services
     implement the same interface (create_agent, update_agent, delete_agent,
-    get_deployment_status) without requiring explicit protocol inheritance.
+    get_deployment_status).
     """
 
     def __init__(self):
@@ -25,7 +27,6 @@ class AgentHandler:
             self.agent_service = ArgoCDDeployer()
         else:
             self.agent_service = K8sDeployer()
-        self.status_service = StatusService()
 
     async def created(self, namespace: str, name: str, agent: AkamaiAgent):
         self.logger.info(f"Processing created agent {name} in namespace {namespace}")
@@ -33,31 +34,26 @@ class AgentHandler:
         try:
             agent_data = await create_agent_data(namespace, name, agent)
 
-            status = await self.agent_service.get_deployment_status(agent_data)
-            if status:
+            deployment_status = await self.agent_service.get_deployment_status(
+                agent_data
+            )
+            if deployment_status:
                 self.logger.info(
                     f"Agent {name} deployment already exists, skipping creation"
                 )
-                await self.status_service.set_agent_deployed(namespace, name, name)
-                return
+                return get_agent_deployed_status(name).to_dict()
 
             deployment_id = await self.agent_service.create_agent(agent_data)
-            await self.status_service.set_agent_deployed(namespace, name, deployment_id)
-            await self.status_service.clear_agent_failed(namespace, name)
 
             self.logger.info(
                 f"Agent {name} created successfully with model {agent.foundation_model} (deployment: {deployment_id})"
             )
 
+            return get_agent_deployed_status(name).to_dict()
+
         except Exception as e:
             self.logger.error(f"Failed to create agent {name}: {e}")
-            if "Knowledge base" in str(e):
-                await self.status_service.set_knowledge_base_error(
-                    namespace, name, str(e)
-                )
-            else:
-                await self.status_service.set_agent_failed(namespace, name, str(e))
-            raise
+            return get_agent_failed_status(name, str(e)).to_dict()
 
     async def updated(self, namespace: str, name: str, agent: AkamaiAgent):
         self.logger.info(f"Processing updated agent {name} in namespace {namespace}")
@@ -65,22 +61,16 @@ class AgentHandler:
         try:
             agent_data = await create_agent_data(namespace, name, agent)
             deployment_id = await self.agent_service.update_agent(agent_data)
-            await self.status_service.set_agent_deployed(namespace, name, deployment_id)
-            await self.status_service.clear_agent_failed(namespace, name)
 
             self.logger.info(
                 f"Agent {name} updated successfully (deployment: {deployment_id})"
             )
 
+            return get_agent_deployed_status(name).to_dict()
+
         except Exception as e:
             self.logger.error(f"Failed to update agent {name}: {e}")
-            if "Knowledge base" in str(e):
-                await self.status_service.set_knowledge_base_error(
-                    namespace, name, str(e)
-                )
-            else:
-                await self.status_service.set_agent_failed(namespace, name, str(e))
-            raise
+            return get_agent_failed_status(name, str(e)).to_dict()
 
     async def deleted(self, namespace: str, name: str, agent: AkamaiAgent):
         self.logger.info(
@@ -88,19 +78,19 @@ class AgentHandler:
         )
 
         try:
-            agent_data = await create_agent_data(namespace, name, agent)
+            # For deletion, we don't need full agent data with enriched KB configs
+            # Create minimal AgentData with basic info
+            agent_data = AgentData(
+                namespace=namespace,
+                name=name,
+                foundation_model=agent.foundation_model,
+                foundation_model_endpoint="",  # Not needed for deletion
+                system_prompt=agent.system_prompt,
+                routes=[],
+                tools=[],
+            )
             await self.agent_service.delete_agent(agent_data)
             self.logger.info(f"Agent {name} cleanup completed")
         except Exception as e:
             self.logger.error(f"Failed to delete agent {name}: {e}")
             raise
-
-    async def get_agent_status(
-        self, namespace: str, name: str, agent: AkamaiAgent
-    ) -> Optional[Dict[str, Any]]:
-        try:
-            agent_data = await create_agent_data(namespace, name, agent)
-            return await self.agent_service.get_deployment_status(agent_data)
-        except Exception as e:
-            self.logger.error(f"Failed to get status for agent {name}: {e}")
-            return None

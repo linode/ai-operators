@@ -68,7 +68,11 @@ spec:
                   - type
           status:
             type: object
+            x-kubernetes-preserve-unknown-fields: true
             properties:
+              phase:
+                description: Current phase of the agent (Deployed, Failed)
+                type: string
               conditions:
                 description: Current conditions of the agent
                 type: array
@@ -85,7 +89,6 @@ spec:
                       enum:
                       - AgentDeployed
                       - AgentFailed
-                      - KnowledgeBaseLinked
                     status:
                       description: Status of the condition
                       type: string
@@ -96,12 +99,6 @@ spec:
                     reason:
                       description: Reason for the condition status
                       type: string
-                      enum:
-                      - Scheduled
-                      - Misconfiguration
-                      - ModelError
-                      - KnowledgeBaseNotFound
-                      - DeploymentError
                     message:
                       description: Human readable message describing the condition
                       type: string
@@ -131,8 +128,6 @@ spec:
       type: string
       format: date-time
       jsonPath: .metadata.creationTimestamp
-    subresources:
-      status: {}
   scope: Namespaced
   names:
     plural: akamaiagents

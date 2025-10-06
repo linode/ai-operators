@@ -6,8 +6,11 @@ from typing import Dict, Any, Optional
 from kubernetes_asyncio import client
 from kubernetes_asyncio.client import ApiException
 
-from .agent_data import AgentData
-from .helm_utils import create_helm_values, template_agent_chart
+from ai_operators.agent_operator.model.agent_data import AgentData
+from ai_operators.agent_operator.utils.helm import (
+    create_helm_values,
+    template_agent_chart,
+)
 
 
 class K8sDeployer:
@@ -89,7 +92,7 @@ class K8sDeployer:
         self._apply_manifest_dir(manifest_dir, agent_data.namespace)
 
         self.logger.info(f"Successfully deployed agent {agent_data.name}")
-        return f"agent-{agent_data.name}"
+        return agent_data.name
 
     async def update_agent(self, agent_data: AgentData) -> str:
         """Update existing agent deployment."""
@@ -122,6 +125,7 @@ class K8sDeployer:
 
         self.logger.info(f"Successfully deleted agent {agent_data.name}")
 
+    # TODO make this strongly typed
     async def get_deployment_status(
         self, agent_data: AgentData
     ) -> Optional[Dict[str, Any]]:

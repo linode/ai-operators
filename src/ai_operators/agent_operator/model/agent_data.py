@@ -2,7 +2,8 @@ from typing import Dict, Any, List
 from attrs import define, field
 
 from ai_operators.agent_operator.resource import AkamaiAgent
-from .k8s import fetch_knowledge_base_config, get_foundation_model_endpoint
+from ai_operators.agent_operator.utils.k8s import get_foundation_model_endpoint
+from ai_operators.agent_operator.model.kb_data import create_kb_data
 
 
 @define
@@ -14,7 +15,7 @@ class AgentData:
     foundation_model: str
     foundation_model_endpoint: str
     system_prompt: str
-    """TODO make this strongly typed"""
+    # TODO make this strongly typed
     routes: List[Dict[str, Any]] = field(factory=list)
     tools: List[Dict[str, Any]] = field(factory=list)
 
@@ -22,8 +23,7 @@ class AgentData:
 async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> AgentData:
     """Create AgentData from AkamaiAgent resource."""
 
-    # Enrich tools - fetch KB configs for knowledgeBase tools
-    enriched_tools = []
+    tools = []
     for tool in agent.tools:
         tool_copy = tool.copy()
 
@@ -31,10 +31,10 @@ async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> Ag
             # Fetch KB CR and merge its config
             kb_name = tool.get("name")
             if kb_name:
-                kb_config = await fetch_knowledge_base_config(namespace, kb_name)
-                tool_copy["config"] = kb_config
+                kb_data = await create_kb_data(namespace, kb_name)
+                tool_copy["config"] = kb_data.to_config_dict()
 
-        enriched_tools.append(tool_copy)
+        tools.append(tool_copy)
 
     # Get foundation model endpoint from service discovery
     foundation_model_endpoint = await get_foundation_model_endpoint(
@@ -48,5 +48,5 @@ async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> Ag
         foundation_model_endpoint=foundation_model_endpoint,
         system_prompt=agent.system_prompt,
         routes=agent.routes.copy(),
-        tools=enriched_tools,
+        tools=tools,
     )

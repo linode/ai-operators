@@ -9,7 +9,7 @@ spec:
   tools:
   - type: knowledgeBase
     name: demo-kb
-    description: "Search the demo knowledge base for information about products and services"
+    description: "Search the demo knowledge base for information about products"
   - type: function
     name: web_search
     description: "Get a list of available models in the cluster"
@@ -31,4 +31,4 @@ spec:
     embed_dim: 1536
     embed_batch_size: 500
     secret_name: "pgvector-app" # pragma: allowlist secret
-    secret_namespace: "team-kb" # pragma: allowlist secret
+    secret_namespace: "team-demo" # pragma: allowlist secret

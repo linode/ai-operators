@@ -5,14 +5,13 @@ from typing import Dict, Any, Optional
 from kubernetes_asyncio import client
 from kubernetes_asyncio.client import ApiException
 
-from ..constants import KB_CUSTOM_API_ARGS
+from ai_operators.agent_operator.constants import KB_CUSTOM_API_ARGS
+from ai_operators.agent_operator.resource import AkamaiKnowledgeBase
 
 
-# Custom Resource operations
 async def create_custom_object(
     group: str, version: str, namespace: str, plural: str, body: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Create a custom resource object."""
     async with client.ApiClient() as api_client:
         custom_api = client.CustomObjectsApi(api_client)
         return await custom_api.create_namespaced_custom_object(
@@ -23,7 +22,6 @@ async def create_custom_object(
 async def get_custom_object(
     group: str, version: str, namespace: str, plural: str, name: str
 ) -> Optional[Dict[str, Any]]:
-    """Get a custom resource object."""
     try:
         async with client.ApiClient() as api_client:
             custom_api = client.CustomObjectsApi(api_client)
@@ -48,7 +46,6 @@ async def patch_custom_object(
     name: str,
     body: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Patch a custom resource object."""
     async with client.ApiClient() as api_client:
         custom_api = client.CustomObjectsApi(api_client)
         return await custom_api.patch_namespaced_custom_object(
@@ -64,7 +61,6 @@ async def patch_custom_object(
 async def delete_custom_object(
     group: str, version: str, namespace: str, plural: str, name: str
 ) -> None:
-    """Delete a custom resource object."""
     try:
         async with client.ApiClient() as api_client:
             custom_api = client.CustomObjectsApi(api_client)
@@ -80,42 +76,29 @@ async def delete_custom_object(
             raise
 
 
-async def fetch_knowledge_base_config(namespace: str, kb_name: str) -> Dict[str, Any]:
-    """Fetch knowledge base configuration from KnowledgeBase CR."""
-    try:
-        kb_cr = await get_custom_object(
-            group=KB_CUSTOM_API_ARGS["group"],
-            version=KB_CUSTOM_API_ARGS["version"],
-            namespace=namespace,
-            plural=KB_CUSTOM_API_ARGS["plural"],
-            name=kb_name,
+async def fetch_knowledge_base_config(
+    namespace: str, kb_name: str
+) -> AkamaiKnowledgeBase:
+    """Fetch knowledge base configuration from the cluster based on the kb name"""
+    kb_cr_dict = await get_custom_object(
+        group=KB_CUSTOM_API_ARGS["group"],
+        version=KB_CUSTOM_API_ARGS["version"],
+        namespace=namespace,
+        plural=KB_CUSTOM_API_ARGS["plural"],
+        name=kb_name,
+    )
+
+    if not kb_cr_dict:
+        raise ValueError(
+            f"Knowledge base '{kb_name}' not found in namespace '{namespace}'"
         )
 
-        if not kb_cr:
-            raise ValueError(
-                f"Knowledge base '{kb_name}' not found in namespace '{namespace}'"
-            )
-
-        # Extract spec and return pipelineParameters as config
-        spec = kb_cr.get("spec", {})
-        pipeline_params = spec.get("pipelineParameters", {})
-
-        # Return the pipeline parameters as the KB config
-        # This allows flexible KB configurations
-        return {
-            "pipeline_name": spec.get("pipelineName"),
-            **pipeline_params,  # Merge all pipeline parameters
-        }
-
-    except ValueError:
-        raise
-    except Exception:
-        # Re-raise other errors
-        raise
+    spec = kb_cr_dict.get("spec", {})
+    return AkamaiKnowledgeBase.from_spec(spec)
 
 
 async def get_foundation_model_endpoint(model_name: str) -> str:
-    """Discover foundation model endpoint by querying services with labels."""
+    """Discover foundation model endpoint by querying services with labels modelType and modelName."""
     async with client.ApiClient() as api_client:
         core_api = client.CoreV1Api(api_client)
 
@@ -126,7 +109,6 @@ async def get_foundation_model_endpoint(model_name: str) -> str:
         )
 
         if services.items:
-            # Use the first matching service
             service = services.items[0]
             service_name = service.metadata.name
             service_namespace = service.metadata.namespace

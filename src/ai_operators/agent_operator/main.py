@@ -47,7 +47,8 @@ async def created(spec, meta, logger, **_):
     logger.info(f"Detected created resource {meta['name']}.")
     logger.debug(f"Spec: {spec}")
 
-    await AGENT_HANDLER.created(
+    # Whatever the handler returns will be stored in the status field of the resource
+    return await AGENT_HANDLER.created(
         meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
     )
 
@@ -58,7 +59,8 @@ async def updated(spec, meta, old, new, diff, logger, **_):
     logger.debug(f"Spec: {spec}")
     logger.debug(f"Diff: {diff}")
 
-    await AGENT_HANDLER.updated(
+    # Whatever the handler returns will be stored in the status field of the resource
+    return await AGENT_HANDLER.updated(
         meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
     )
 

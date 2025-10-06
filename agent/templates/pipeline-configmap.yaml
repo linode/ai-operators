@@ -10,10 +10,10 @@ data:
     llama-index-vector-stores-postgres
     llama-index-embeddings-openai-like
     llama-index-llms-openai-like
+    llama-index-tools-mcp
     opencv-python-headless
     kubernetes
   pipeline.py: | # pragma: allowlist secret
-    """
     import json
     import anyio
     from typing import Dict, Any
@@ -41,7 +41,7 @@ data:
       async def on_startup(self):
         # Load config from mounted ConfigMap
         config_path = "/config/agent-config.json"
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
           self.agent_config = json.load(f)
 
         self.name = self.agent_config["name"]
@@ -103,16 +103,19 @@ data:
             fn = self._resolve_function(tool_spec.get("name"))
             tool = FunctionTool.from_defaults(
               fn=fn,
-              name=f"{tool_spec.get("name")}_function",
+              name=f"{tool_spec.get('name')}_function",
               description=tool_spec.get("description", "Function tool"),
             )
             tools.append(tool)
 
           elif tool_type == "mcpServer":
-            # MCP server tool
-            mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
-            mcp_tool = McpToolSpec(client=mcp_client)
-            tools.extend(await mcp_tool.to_tool_list_async())
+            # MCP server tool - skip if endpoint is unreachable
+            try:
+              mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
+              mcp_tool = McpToolSpec(client=mcp_client)
+              tools.extend(await mcp_tool.to_tool_list_async())
+            except Exception as e:
+              print(f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}")
 
         system_prompt = self.agent_config.get("system_prompt", "You are a helpful AI assistant.")
 
@@ -154,17 +157,14 @@ data:
           namespace=kb_config.get("secret_namespace", self.agent_config["namespace"]),
         )
         return {
-          "username": base64.b64decode(secret.data['username']).decode('utf-8'),
-          "password": base64.b64decode(secret.data['password']).decode('utf-8'),
-          "host": base64.b64decode(secret.data['host']).decode('utf-8'),
-          "port": int(base64.b64decode(secret.data['port']).decode('utf-8')),
+          "username": base64.b64decode(secret.data["username"]).decode("utf-8"),
+          "password": base64.b64decode(secret.data["password"]).decode("utf-8"),
+          "host": base64.b64decode(secret.data["host"]).decode("utf-8"),
+          "port": int(base64.b64decode(secret.data["port"]).decode("utf-8")),
         }
 
       def _web_search(self, query: str) -> str:
-        """
-        Search the web for information.
-
-        """
+        """Search the web for information."""
         ...
 
       def pipe(self, user_message, model_id, messages, body):
