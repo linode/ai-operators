@@ -87,4 +87,11 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+{{- if eq (.Values.env.PROVIDER | default "") "apl" }}
+# ArgoCD Applications (when PROVIDER=apl)
+- apiGroups: ["argoproj.io"]
+  resources: ["applications"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+{{- end }}
 {{- end }}

@@ -72,7 +72,17 @@ helm install -n team-demo agent-operator ./chart \
   --timeout=5m
 ```
 
-**4. Test the operator**
+**4. Create required secrets**
+```bash
+# Create pgvector database secret (required for knowledge base tools)
+kubectl create secret generic pgvector-app -n team-demo \
+  --from-literal=username=app \
+  --from-literal=password=your-password-here \
+  --from-literal=host=pgvector-cluster-rw.team-demo.svc.cluster.local \
+  --from-literal=port=5432
+```
+
+**5. Test the operator**
 ```bash
 # Create a test foundation model service (required for agent deployment)
 kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
@@ -140,7 +150,17 @@ helm install -n team-demo agent-operator ./chart \
   --timeout=5m
 ```
 
-**5. Test the operator**
+**5. Create required secrets**
+```bash
+# Create pgvector database secret (required for knowledge base tools)
+kubectl create secret generic pgvector-app -n team-demo \
+  --from-literal=username=app \
+  --from-literal=password=your-password-here \
+  --from-literal=host=pgvector-cluster-rw.team-demo.svc.cluster.local \
+  --from-literal=port=5432
+```
+
+**6. Test the operator**
 ```bash
 # Create a test foundation model service (required for agent deployment)
 kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
@@ -160,7 +180,7 @@ kubectl get applications -n argocd
 kubectl logs -l app.kubernetes.io/name=agent-operator -n team-demo -f
 ```
 
-**6. Cleanup**
+**7. Cleanup**
 ```bash
 # Delete the Kind cluster
 kind delete cluster --name agent-operator-test
