@@ -32,6 +32,14 @@ class AgentConfig:
     @classmethod
     def from_agent_data(cls, agent_data: AgentData) -> "AgentConfig":
         """Create AgentConfig from AgentData."""
+        # Sanitize tool names to snake_case for LlamaIndex
+        sanitized_tools = []
+        for tool in agent_data.tools:
+            tool_copy = tool.copy()
+            if "name" in tool_copy:
+                tool_copy["name"] = tool_copy["name"].replace("-", "_")
+            sanitized_tools.append(tool_copy)
+
         return cls(
             namespace=agent_data.namespace,
             name=agent_data.name,
@@ -41,7 +49,7 @@ class AgentConfig:
             ),
             system_prompt=agent_data.system_prompt,
             routes=agent_data.routes,
-            tools=agent_data.tools,
+            tools=sanitized_tools,
         )
 
     def to_dict(self) -> Dict[str, Any]:

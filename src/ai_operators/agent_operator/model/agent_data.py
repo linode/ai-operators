@@ -27,12 +27,8 @@ async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> Ag
     for tool in agent.tools:
         tool_copy = tool.copy()
 
-        # Sanitize tool name to snake_case
-        if "name" in tool_copy:
-            tool_copy["name"] = tool_copy["name"].replace("-", "_")
-
         if tool.get("type") == "knowledgeBase":
-            kb_name = tool_copy.get("name")
+            kb_name = tool.get("name")
             if kb_name:
                 kb_data = await create_kb_data(namespace, kb_name)
                 tool_copy["config"] = kb_data.to_config_dict()
