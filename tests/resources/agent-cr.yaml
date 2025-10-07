@@ -8,7 +8,7 @@ spec:
   systemPrompt: "You are a helpful AI assistant that helps users with their questions."
   tools:
   - type: knowledgeBase
-    name: new-demo-kb
+    name: demo-kb
     description: "Search the demo knowledge base for information about products"
   - type: function
     name: web_search

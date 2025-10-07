@@ -7,7 +7,6 @@ from ai_operators.agent_operator.services.argocd_deployer import ArgoCDDeployer
 from ai_operators.agent_operator.services.k8s_deployer import K8sDeployer
 from ai_operators.agent_operator.utils.status import (
     get_agent_deployed_status,
-    get_agent_failed_status,
 )
 
 
@@ -53,7 +52,7 @@ class AgentHandler:
 
         except Exception as e:
             self.logger.error(f"Failed to create agent {name}: {e}")
-            return get_agent_failed_status(name, str(e)).to_dict()
+            raise
 
     async def updated(self, namespace: str, name: str, agent: AkamaiAgent):
         self.logger.info(f"Processing updated agent {name} in namespace {namespace}")
@@ -70,7 +69,7 @@ class AgentHandler:
 
         except Exception as e:
             self.logger.error(f"Failed to update agent {name}: {e}")
-            return get_agent_failed_status(name, str(e)).to_dict()
+            raise
 
     async def deleted(self, namespace: str, name: str, agent: AkamaiAgent):
         self.logger.info(
