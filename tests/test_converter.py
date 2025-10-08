@@ -1,5 +1,5 @@
-from converter import converter
-from ml_operator.resource import AkamaiKnowledgeBase
+from ai_operators.ml_operator.converter import converter
+from ai_operators.ml_operator import AkamaiKnowledgeBase
 from tests.ml_operator.conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
 

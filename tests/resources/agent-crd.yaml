@@ -30,25 +30,55 @@ spec:
             type: object
             required:
             - foundationModel
-            - systemPrompt
+            - agentInstructions
             properties:
               foundationModel:
                 description: The foundation model to use for the agent
                 type: string
                 minLength: 1
                 example: llama
-              systemPrompt:
-                description: System prompt that defines the agent's behavior
+              agentInstructions:
+                description: Instructions that define the agent's behavior and personality
                 type: string
                 minLength: 1
                 maxLength: 4096
-              knowledgeBase:
-                description: Optional reference to a knowledge base resource
-                type: string
-                pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+              maxTokens:
+                description: Maximum number of tokens for model responses
+                type: integer
+                default: 512
+                minimum: 1
+                maximum: 32000
+              tools:
+                description: Tools available to the agent
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      description: Type of tool (knowledgeBase, function, mcpServer)
+                      type: string
+                      enum:
+                      - knowledgeBase
+                      - function
+                      - mcpServer
+                    name:
+                      description: Name of the tool
+                      type: string
+                    description:
+                      description: Description of how the agent can use this tool
+                      type: string
+                    endpoint:
+                      description: Endpoint for mcpServer type tools
+                      type: string
+                  required:
+                  - type
           status:
             type: object
+            x-kubernetes-preserve-unknown-fields: true
             properties:
+              phase:
+                description: Current phase of the agent (Deployed, Failed)
+                type: string
               conditions:
                 description: Current conditions of the agent
                 type: array
@@ -65,7 +95,6 @@ spec:
                       enum:
                       - AgentDeployed
                       - AgentFailed
-                      - KnowledgeBaseLinked
                     status:
                       description: Status of the condition
                       type: string
@@ -76,12 +105,6 @@ spec:
                     reason:
                       description: Reason for the condition status
                       type: string
-                      enum:
-                      - Scheduled
-                      - Misconfiguration
-                      - ModelError
-                      - KnowledgeBaseNotFound
-                      - DeploymentError
                     message:
                       description: Human readable message describing the condition
                       type: string
@@ -99,10 +122,10 @@ spec:
       type: string
       description: Foundation model
       jsonPath: .spec.foundationModel
-    - name: Knowledge Base
+    - name: Tools
       type: string
-      description: Linked knowledge base
-      jsonPath: .spec.knowledgeBase
+      description: Number of tools
+      jsonPath: .spec.tools.length
     - name: Status
       type: string
       description: Agent deployment status
@@ -111,8 +134,6 @@ spec:
       type: string
       format: date-time
       jsonPath: .metadata.creationTimestamp
-    subresources:
-      status: {}
   scope: Namespaced
   names:
     plural: akamaiagents

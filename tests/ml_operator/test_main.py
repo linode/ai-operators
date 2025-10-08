@@ -18,8 +18,8 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 
-from ml_operator.constants import CUSTOM_API_ARGS
-from ml_operator.resource import AkamaiKnowledgeBase
+from ai_operators.ml_operator import CUSTOM_API_ARGS
+from ai_operators.ml_operator import AkamaiKnowledgeBase
 from tests.ml_operator.conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
 _DIR = Path(__file__).parent.parent
@@ -201,14 +201,14 @@ async def test_lifecycle(
                     body=[
                         {
                             "op": "replace",
-                            "path": "/spec/pipelineParameters/dbSecretName",
-                            "value": "pgvector2-app",
+                            "path": "/spec/pipelineParameters/embedding_model_name",
+                            "value": "gpt-4",
                         }
                     ],
                 )
                 await sleep(5)
                 updated_spec = deepcopy(SAMPLE_KB_DICT)
-                updated_spec["pipelineParameters"]["dbSecretName"] = "pgvector2-app"
+                updated_spec["pipelineParameters"]["embedding_model_name"] = "gpt-4"
                 updated_kb = AkamaiKnowledgeBase.from_spec(updated_spec)
                 if expect_call:
                     mock_update.assert_called_once_with(

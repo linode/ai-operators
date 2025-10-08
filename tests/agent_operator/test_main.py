@@ -18,8 +18,8 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 
-from agent_operator.constants import CUSTOM_API_ARGS
-from agent_operator.resource import AkamaiAgent
+from ai_operators.agent_operator import CUSTOM_API_ARGS
+from ai_operators.agent_operator import AkamaiAgent
 from tests.agent_operator.conftest import SAMPLE_AGENT_OBJECT, SAMPLE_AGENT_DICT
 
 _DIR = Path(__file__).parent.parent
@@ -197,14 +197,16 @@ async def test_lifecycle(
                     body=[
                         {
                             "op": "replace",
-                            "path": "/spec/systemPrompt",
+                            "path": "/spec/agentInstructions",
                             "value": "You're an updated helpful AI assistant",
                         }
                     ],
                 )
                 await sleep(5)
                 updated_spec = deepcopy(SAMPLE_AGENT_DICT)
-                updated_spec["systemPrompt"] = "You're an updated helpful AI assistant"
+                updated_spec["agentInstructions"] = (
+                    "You're an updated helpful AI assistant"
+                )
                 updated_agent = AkamaiAgent.from_spec(updated_spec)
                 if expect_call:
                     mock_update.assert_called_once_with(

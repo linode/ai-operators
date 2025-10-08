@@ -4,7 +4,7 @@ from zipfile import ZipFile
 from aiohttp import ClientResponseError
 from aioresponses import aioresponses
 
-from ml_operator.pipelines.downloader import (
+from ai_operators.ml_operator import (
     PipelineDownloader,
     PipelineDownloadConfig,
     PipelineFileResponse,
@@ -18,12 +18,12 @@ from tempfile import NamedTemporaryFile
 import pytest
 from kubernetes_asyncio.client import V1ConfigMap, V1Secret, ApiException
 
-from ml_operator.pipelines.config import (
+from ai_operators.ml_operator.pipelines.config import (
     PipelineConfigLoader,
     PipelineSourceConfig,
     PipelineSourceAuth,
 )
-from ml_operator.pipelines.updater import PipelineUpdater
+from ai_operators.ml_operator import PipelineUpdater
 
 
 async def test_config(mocker):
@@ -35,7 +35,7 @@ async def test_config(mocker):
         mocker.AsyncMock(
             return_value=V1ConfigMap(
                 data={
-                    "default": '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}'
+                    "default": '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}'  # pragma: allowlist secret
                 }
             )
         ),
@@ -66,17 +66,17 @@ async def test_config(mocker):
             '{"url": "<test-url>", "authType": "bearer"}', None, id="no-secret"
         ),
         pytest.param(
-            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',  # pragma: allowlist secret
             None,
             id="missing-secret",
         ),
         pytest.param(
-            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',  # pragma: allowlist secret
             {"other-key": "dGVzdC12YWx1ZQ=="},
             id="missing-secret-key",
         ),
         pytest.param(
-            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',
+            '{"url": "<test-url>", "authType": "bearer", "authSecretName": "test-secret", "authSecretKey": "test-key"}',  # pragma: allowlist secret
             {"test-key": "invalid-value"},
             id="invalid-secret-value",
         ),

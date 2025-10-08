@@ -2,8 +2,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ml_operator.handlers.knowledge_base_handler import KnowledgeBaseHandler
-from ml_operator.services.kubeflow_pipelines_service import KubeflowPipelinesService
+from ai_operators.ml_operator import KnowledgeBaseHandler
+from ai_operators.ml_operator import KubeflowPipelinesService
 from tests.ml_operator.conftest import SAMPLE_KB_OBJECT
 
 

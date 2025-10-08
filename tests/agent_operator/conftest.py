@@ -1,29 +1,31 @@
-import pytest
-
-from agent_operator.resource import AkamaiAgent
+from ai_operators.agent_operator import AkamaiAgent
 
 # Global test objects, reused in tests
 SAMPLE_AGENT_DICT = {
     "foundationModel": "llama",
-    "systemPrompt": "You're a helpful AI assistant",
-    "knowledgeBase": "test-kb"
+    "agentInstructions": "You're a helpful AI assistant",
+    "maxTokens": 512,
+    "knowledgeBase": "test-kb",
 }
 
 SAMPLE_AGENT_OBJECT = AkamaiAgent(
     foundation_model="llama",
-    system_prompt="You're a helpful AI assistant",
-    knowledge_base="test-kb"
+    agent_instructions="You're a helpful AI assistant",
+    max_tokens=512,
+    knowledge_base="test-kb",
 )
 
 # Test objects for updates
 UPDATED_AGENT_DICT = {
     "foundationModel": "llama",
-    "systemPrompt": "You're an updated helpful AI assistant",
-    "knowledgeBase": "test-kb"
+    "agentInstructions": "You're an updated helpful AI assistant",
+    "maxTokens": 1024,
+    "knowledgeBase": "test-kb",
 }
 
 UPDATED_AGENT_OBJECT = AkamaiAgent(
     foundation_model="llama",
-    system_prompt="You're an updated helpful AI assistant",
-    knowledge_base="test-kb"
+    agent_instructions="You're an updated helpful AI assistant",
+    max_tokens=1024,
+    knowledge_base="test-kb",
 )

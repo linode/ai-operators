@@ -1,4 +1,8 @@
-# Akamai ML-Operator
+# Akamai AI Operators
+
+This repository contains Kubernetes operators for managing AI workloads:
+- **KB Operator (ml-operator)**: Manages knowledge base resources with Kubeflow Pipelines
+- **Agent Operator**: Manages AI agent deployments with foundation models
 
 ## Prerequisites
 
@@ -22,14 +26,216 @@ A few utility commands are set up using `poe`. Outside the virtual environment,
 ## Structure
 
 ```
-ml-operator
-├── chart         # Helm chart for deployment
+ai-operators
+├── agent         # Agent Helm chart
+├── chart         # Combined Helm chart for both operators
 ├── dependencies  # Generated requirements.txt for image generation
-├── src           # ml-operator package
+├── src           # Operator packages (kb_operator and agent_operator)
 └── tests         # pytest modules and resources
 ```
 
-## Testing
+## Helm Chart Configuration
+
+The `chart/` directory contains a unified Helm chart that can deploy both operators. You can enable or disable each operator independently using values:
+
+```yaml
+# Enable/disable operators
+kbOperator:
+  enabled: true    # Knowledge Base operator
+  replicaCount: 1
+  image:
+    repository: linode/kb-operator
+    tag: "0.1.0"
+  # Additional KB operator config...
+
+agentOperator:
+  enabled: false   # Agent operator
+  replicaCount: 1
+  provider: linode # linode or apl
+  image:
+    repository: linode/agent-operator
+    tag: "0.1.0"
+  # Additional agent operator config...
+```
+
+**Deploy both operators:**
+```bash
+helm install ai-operators ./chart
+```
+
+**Deploy only KB operator:**
+```bash
+helm install ai-operators ./chart --set agentOperator.enabled=false
+```
+
+**Deploy only Agent operator:**
+```bash
+helm install ai-operators ./chart --set kbOperator.enabled=false --set agentOperator.enabled=true
+```
+
+## Testing agent-operator
+
+The agent-operator can be deployed using two different providers:
+- **Linode/K8s Provider** (`PROVIDER=linode`): Uses `kubectl` to deploy agents directly
+- **APL Provider** (`PROVIDER=apl`): Uses ArgoCD to deploy agents
+
+### Testing with Linode/K8s Provider
+
+**1. Create Kind cluster**
+```bash
+kind create cluster --name agent-operator-test
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+```
+
+**2. Create test namespace**
+```bash
+kubectl create namespace team-demo
+```
+
+**3. Build and deploy agent-operator**
+```bash
+# Generate requirements.txt
+uv run poe export-deps
+
+# Build Docker image with agent chart included
+docker build \
+  --build-arg OPERATOR_MODULE=agent_operator \
+  -t agent-operator:local .
+
+# Load image into Kind cluster
+kind load docker-image agent-operator:local --name agent-operator-test
+
+# Deploy the agent-operator with Linode provider
+helm install -n team-demo ai-operators ./chart \
+  --set agentOperator.enabled=true \
+  --set agentOperator.provider=linode \
+  --set agentOperator.image.repository=agent-operator \
+  --set agentOperator.image.tag=local \
+  --set agentOperator.image.pullPolicy=Never \
+  --set kbOperator.enabled=false \
+  --wait \
+  --timeout=5m
+```
+
+**4. Create required secrets**
+```bash
+# Create pgvector database secret (required for knowledge base tools)
+kubectl create secret generic pgvector-app -n team-demo \
+  --from-literal=username=app \
+  --from-literal=password=your-password-here \
+  --from-literal=host=pgvector-cluster-rw.team-demo.svc.cluster.local \
+  --from-literal=port=5432
+```
+
+**5. Test the operator**
+```bash
+# Create a test foundation model service (required for agent deployment)
+kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
+kubectl label service llama-service modelType=foundation modelName=llama -n team-demo
+
+# Create a test agent resource
+kubectl apply -f tests/resources/kb-crd.yaml
+kubectl apply -f tests/resources/agent-cr.yaml
+
+# Check the agent resource
+kubectl get akamaiagents -n team-demo
+
+# Watch operator logs
+kubectl logs -l app.kubernetes.io/component=agent-operator -n team-demo -f
+```
+
+### Testing with APL/ArgoCD Provider
+
+**1. Create Kind cluster**
+```bash
+kind create cluster --name agent-operator-test
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+```
+
+**2. Install ArgoCD**
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl wait --for=condition=Ready pods --all -n argocd --timeout=600s
+```
+
+**3. Create test namespace**
+```bash
+kubectl create namespace team-demo
+```
+
+**4. Build and deploy agent-operator**
+```bash
+# Generate requirements.txt
+uv run poe export-deps
+
+# Build Docker image with agent chart included
+docker build \
+  --build-arg OPERATOR_MODULE=agent_operator \
+  --no-cache \
+  -t agent-operator:local .
+
+# Load image into Kind cluster
+kind load docker-image agent-operator:local --name agent-operator-test
+````
+
+```bash
+
+# Deploy the agent-operator with APL provider
+helm install -n team-demo ai-operators ./chart \
+  --set agentOperator.enabled=true \
+  --set agentOperator.provider=apl \
+  --set agentOperator.image.repository=agent-operator \
+  --set agentOperator.image.tag=local \
+  --set agentOperator.image.pullPolicy=Never \
+  --set agentOperator.env.AGENT_CHART_REPO_URL=https://github.com/linode/ai-operators.git \
+  --set agentOperator.env.AGENT_CHART_REPO_REVISION=main \
+  --set agentOperator.env.AGENT_CHART_PATH=agent \
+  --set kbOperator.enabled=false \
+  --wait \
+  --timeout=5m
+```
+
+**5. Create required secrets**
+```bash
+# Create pgvector database secret (required for knowledge base tools)
+kubectl create secret generic pgvector-app -n team-demo \
+  --from-literal=username=app \
+  --from-literal=password=your-password-here \
+  --from-literal=host=pgvector-cluster-rw.team-demo.svc.cluster.local \
+  --from-literal=port=5432
+```
+
+**6. Test the operator**
+```bash
+# Create a test foundation model service (required for agent deployment)
+kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
+kubectl label service llama-service modelType=foundation modelName=llama -n team-demo
+
+# Create a test agent resource
+kubectl apply -f tests/resources/kb-crd.yaml
+kubectl apply -f tests/resources/kb-cr.yaml
+kubectl apply -f tests/resources/agent-cr.yaml
+
+# Check the agent resource
+kubectl get akamaiagents -n team-demo
+
+# Check ArgoCD application created
+kubectl get applications -n argocd
+
+# Watch operator logs
+kubectl logs -l app.kubernetes.io/component=agent-operator -n team-demo -f
+```
+
+**7. Cleanup**
+```bash
+# Delete the Kind cluster
+kind delete cluster --name agent-operator-test
+```
+
+
+
+## Testing ml-operator
 
 ### Local Development Setup with Kind
 
@@ -171,12 +377,14 @@ docker build -t ml-operator:local .
 # Load image into Kind cluster
 kind load docker-image ml-operator:local --name ml-operator-test
 
-# Deploy the ML-Operator
-helm install -n ml-operator ml-operator ./chart \
-  --set image.repository=ml-operator \
-  --set image.tag=local \
-  --set image.pullPolicy=Never \
-  --set env.KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local \
+# Deploy the ML-Operator (KB Operator)
+helm install -n ml-operator ai-operators ./chart \
+  --set kbOperator.enabled=true \
+  --set kbOperator.image.repository=ml-operator \
+  --set kbOperator.image.tag=local \
+  --set kbOperator.image.pullPolicy=Never \
+  --set kbOperator.env.KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local \
+  --set agentOperator.enabled=false \
   --wait \
   --timeout=5m
 ```
@@ -195,7 +403,7 @@ kubectl apply -f tests/resources/test-knowledge-base.yaml
 kubectl get akamaiknowledgebases
 
 # Watch operator logs
-kubectl logs -l app.kubernetes.io/name=akamai-ml-operator -f
+kubectl logs -l app.kubernetes.io/component=kb-operator -f
 ```
 
 #### Development Workflow
@@ -209,10 +417,10 @@ docker build -t ml-operator:local .
 kind load docker-image ml-operator:local --name ml-operator-test
 
 # Restart the operator deployment
-kubectl rollout restart deployment ml-operator
+kubectl rollout restart deployment -l app.kubernetes.io/component=kb-operator
 
 # Watch the updated logs
-kubectl logs -l app.kubernetes.io/name=akamai-ml-operator -f
+kubectl logs -l app.kubernetes.io/component=kb-operator -f
 ```
 
 #### Cleanup

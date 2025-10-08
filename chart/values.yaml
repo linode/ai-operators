@@ -1,25 +1,10 @@
-# Default values for akamai-ml-operator
-replicaCount: 1
-
-image:
-  repository: linode/akamai-ml-operator
-  pullPolicy: IfNotPresent
-  tag: "0.1.0"
-
+# Default values for ai-operators
+# Shared configuration
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  name: ""
-
-podAnnotations: {}
-
+# Shared pod security settings
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65534
@@ -36,37 +21,69 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 65534
 
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}
 
-# Operator configuration
-operator:
+# Service account configuration
+serviceAccount:
+  create: true
+  annotations: {}
+
+# Knowledge Base Operator configuration
+kbOperator:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: linode/kb-operator
+    pullPolicy: IfNotPresent
+    tag: "0.1.0"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
   # Namespaces to watch (comma-separated, empty means all namespaces)
   watchNamespaces: ""
-    # Operator name ml-operator or agent-operator
-  name: "ml-operator"
   # Kopf configuration
   kopf:
-    # Verbose log level for the operator
     verbose: false
-    # Log format can be one of plain|full|json
-    logFormat: "plain"
-    # Peering name for leader election
-    peeringName: "akamai-ml-operator"
+    logFormat: plain
+    peeringName: "kb-operator"
+  # Environment variables
+  env: {}
+  # Pod annotations
+  podAnnotations: {}
 
-# Environment variables
-env: {}
+# Agent Operator configuration
+agentOperator:
+  enabled: true
+  replicaCount: 1
+  provider: linode # linode or apl
+  image:
+    repository: linode/agent-operator
+    pullPolicy: IfNotPresent
+    tag: "0.1.0"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  # Namespaces to watch (comma-separated, empty means all namespaces)
+  watchNamespaces: ""
+  # Kopf configuration
+  kopf:
+    verbose: false
+    logFormat: plain
+    peeringName: "agent-operator"
+  # Environment variables (PROVIDER, AGENT_CHART_REPO_URL, etc.)
+  env: {}
+  # Pod annotations
+  podAnnotations: {}
 
 # Monitoring
 monitoring:

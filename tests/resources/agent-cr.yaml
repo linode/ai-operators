@@ -1,0 +1,35 @@
+apiVersion: akamai.io/v1alpha1
+kind: AkamaiAgent
+metadata:
+  name: demo-agent
+  namespace: team-demo
+spec:
+  foundationModel: llama
+  agentInstructions: "You are a helpful AI assistant that helps users with their questions."
+  maxTokens: 512
+  tools:
+  - type: knowledgeBase
+    name: demo-kb
+    description: "Search the demo knowledge base for information about products"
+  - type: function
+    name: web_search
+    description: "Get a list of available models in the cluster"
+  - type: mcpServer
+    endpoint: "https://mcp.example.com/api"
+---
+apiVersion: akamai.io/v1alpha1
+kind: AkamaiKnowledgeBase
+metadata:
+  name: demo-kb
+  namespace: team-demo
+spec:
+  pipelineName: "custom-pipeline"
+  pipelineParameters:
+    url: "https://docs.example.com/api"
+    table_name: "custom_knowledge_base"
+    embedding_model: "text-embedding-3-small"
+    embedding_api_base: "https://api.openai.com/v1"
+    embed_dim: 1536
+    embed_batch_size: 500
+    secret_name: "pgvector-app" # pragma: allowlist secret
+    secret_namespace: "team-demo" # pragma: allowlist secret
