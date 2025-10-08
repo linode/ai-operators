@@ -18,9 +18,9 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 
-from ai_operators.ml_operator import CUSTOM_API_ARGS
-from ai_operators.ml_operator import AkamaiKnowledgeBase
-from tests.ml_operator.conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
+from ai_operators.kb_operator.constants import CUSTOM_API_ARGS
+from ai_operators.kb_operator.resource import AkamaiKnowledgeBase
+from tests.kb_operator.conftest import SAMPLE_KB_DICT, SAMPLE_KB_OBJECT
 
 _DIR = Path(__file__).parent.parent
 
@@ -48,7 +48,7 @@ def runner():
     ```
     """
     os.environ["WATCH_NAMESPACES"] = "ml-operator-test"
-    return KopfRunner(["run", "-A", "-m", "ml_operator", "--verbose"])
+    return KopfRunner(["run", "-A", "-m", "kb_operator", "--verbose"])
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -156,10 +156,10 @@ def create_sample_cr(name: str) -> dict[str, Any]:
     }
 
 
-@patch("ml_operator.main.KB_HANDLER.wait_for_completion")
-@patch("ml_operator.main.KB_HANDLER.created")
-@patch("ml_operator.main.KB_HANDLER.updated")
-@patch("ml_operator.main.KB_HANDLER.deleted")
+@patch("kb_operator.main.KB_HANDLER.wait_for_completion")
+@patch("kb_operator.main.KB_HANDLER.created")
+@patch("kb_operator.main.KB_HANDLER.updated")
+@patch("kb_operator.main.KB_HANDLER.deleted")
 async def test_lifecycle(
     mock_delete,
     mock_update,

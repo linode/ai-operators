@@ -4,13 +4,6 @@ from zipfile import ZipFile
 from aiohttp import ClientResponseError
 from aioresponses import aioresponses
 
-from ai_operators.ml_operator import (
-    PipelineDownloader,
-    PipelineDownloadConfig,
-    PipelineFileResponse,
-    SizeExceededException,
-    UnexpectedResponseException,
-)
 import tempfile
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -18,12 +11,19 @@ from tempfile import NamedTemporaryFile
 import pytest
 from kubernetes_asyncio.client import V1ConfigMap, V1Secret, ApiException
 
-from ai_operators.ml_operator.pipelines.config import (
+from ai_operators.kb_operator.pipelines.config import (
     PipelineConfigLoader,
     PipelineSourceConfig,
     PipelineSourceAuth,
 )
-from ai_operators.ml_operator import PipelineUpdater
+from ai_operators.kb_operator.pipelines.downloader import (
+    PipelineFileResponse,
+    PipelineDownloader,
+    PipelineDownloadConfig,
+    SizeExceededException,
+    UnexpectedResponseException,
+)
+from ai_operators.kb_operator.pipelines.updater import PipelineUpdater
 
 
 async def test_config(mocker):
@@ -31,7 +31,7 @@ async def test_config(mocker):
     Reading the pipeline configuration from the cluster.
     """
     mock_config_map = mocker.patch(
-        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
+        "ai_operators.kb_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
         mocker.AsyncMock(
             return_value=V1ConfigMap(
                 data={
@@ -41,7 +41,7 @@ async def test_config(mocker):
         ),
     )
     mock_secret = mocker.patch(
-        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
+        "ai_operators.kb_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
         mocker.AsyncMock(
             return_value=V1Secret(data={"test-key": "dGVzdC12YWx1ZQ=="})  # "test-value"
         ),
@@ -97,7 +97,7 @@ async def test_config_invalid(config_map_value, secret_value, mocker):
         ),
     }
     mock_config_map = mocker.patch(
-        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
+        "ai_operators.kb_operator.pipelines.config.CoreV1Api.read_namespaced_config_map",
         mocker.AsyncMock(return_value=V1ConfigMap(data={"default": config_map_value})),
     )
     if secret_value:
@@ -110,7 +110,7 @@ async def test_config_invalid(config_map_value, secret_value, mocker):
         )
 
     mock_secret = mocker.patch(
-        "ml_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
+        "ai_operators.kb_operator.pipelines.config.CoreV1Api.read_namespaced_secret",
         mock_secret_return,
     )
     await config_loader.update_config()

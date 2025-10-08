@@ -18,8 +18,8 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 
-from ai_operators.agent_operator import CUSTOM_API_ARGS
-from ai_operators.agent_operator import AkamaiAgent
+from ai_operators.agent_operator.constants import CUSTOM_API_ARGS
+from ai_operators.agent_operator.resource import AkamaiAgent
 from tests.agent_operator.conftest import SAMPLE_AGENT_OBJECT, SAMPLE_AGENT_DICT
 
 _DIR = Path(__file__).parent.parent

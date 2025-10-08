@@ -2,9 +2,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ai_operators.ml_operator import KnowledgeBaseHandler
-from ai_operators.ml_operator import KubeflowPipelinesService
-from tests.ml_operator.conftest import SAMPLE_KB_OBJECT
+from ai_operators.kb_operator.handlers import KnowledgeBaseHandler
+from ai_operators.kb_operator.services import KubeflowPipelinesService
+from tests.kb_operator.conftest import SAMPLE_KB_OBJECT
 
 
 def test_constructor_custom_pipeline_service():
@@ -18,7 +18,7 @@ def test_constructor_custom_pipeline_service():
 @pytest.fixture
 def handler_with_mock_service():
     with patch(
-        "ml_operator.handlers.knowledge_base_handler.KubeflowPipelinesService"
+        "ai_operators.kb_operator.handlers.knowledge_base_handler.KubeflowPipelinesService"
     ) as mock_service_class:
         mock_service = Mock()
         mock_service_class.return_value = mock_service
@@ -142,7 +142,10 @@ def test_constructor_logger_initialization():
     handler = KnowledgeBaseHandler()
 
     assert handler.logger is not None
-    assert handler.logger.name == "ml_operator.handlers.knowledge_base_handler"
+    assert (
+        handler.logger.name
+        == "ai_operators.kb_operator.handlers.knowledge_base_handler"
+    )
 
 
 async def test_created_and_updated_use_different_actions(handler_with_mock_service):
