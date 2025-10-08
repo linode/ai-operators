@@ -1,53 +1,54 @@
+{{- if .Values.agentOperator.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ai-operators.fullname" . }}
+  name: {{ include "ai-operators.agent-operator.fullname" . }}
   labels:
-    {{- include "ai-operators.labels" . | nindent 4 }}
+    {{- include "ai-operators.agent-operator.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.agentOperator.replicaCount }}
   selector:
     matchLabels:
-      {{- include "ai-operators.selectorLabels" . | nindent 6 }}
+      {{- include "ai-operators.agent-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
-        {{- with .Values.podAnnotations }}
+        {{- with .Values.agentOperator.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "ai-operators.selectorLabels" . | nindent 8 }}
+        {{- include "ai-operators.agent-operator.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "ai-operators.serviceAccountName" . }}
+      serviceAccountName: {{ include "ai-operators.agent-operator.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-      - name: operator
+      - name: agent-operator
         securityContext:
           {{- toYaml .Values.securityContext | nindent 12 }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: "{{ .Values.agentOperator.image.repository }}:{{ .Values.agentOperator.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.agentOperator.image.pullPolicy }}
         command:
         - kopf
         - run
         - -m
-        - ai_operators.{{ .Values.operator.name | replace "-" "_" }}.main
+        - ai_operators.agent_operator.main
         args:
         - --all-namespaces
-        {{- if .Values.operator.kopf.verbose }}
+        {{- if .Values.agentOperator.kopf.verbose }}
         - --verbose
         {{- end }}
-        {{- with .Values.operator.logFormat }}
-        - --log-format={{ . | quote }}
+        {{- with .Values.agentOperator.kopf.logFormat }}
+        - --log-format={{ . }}
         {{- end }}
-        {{- if eq (int .Values.replicaCount) 1 }}
+        {{- if eq (int .Values.agentOperator.replicaCount) 1 }}
         - --standalone
         {{- else }}
-        - --peering={{ .Values.operator.kopf.peeringName }}
+        - --peering={{ .Values.agentOperator.kopf.peeringName }}
         {{- end }}
         - "--liveness=http://0.0.0.0:8080/healthz"
         env:
@@ -58,13 +59,15 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: WATCH_NAMESPACES
-          value: {{ .Values.operator.watchNamespaces }}
-        {{- range $key, $value := .Values.env }}
+          value: {{ .Values.agentOperator.watchNamespaces | quote }}
+        - name: PROVIDER
+          value: {{ .Values.agentOperator.provider | quote }}
+        {{- range $key, $value := .Values.agentOperator.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
         resources:
-          {{- toYaml .Values.resources | nindent 12 }}
+          {{- toYaml .Values.agentOperator.resources | nindent 12 }}
         livenessProbe:
           httpGet:
             path: /healthz
@@ -90,3 +93,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}

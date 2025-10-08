@@ -25,7 +25,8 @@ class AgentConfig:
     namespace: str
     name: str
     foundation_model: FoundationModelConfig
-    system_prompt: str
+    agent_instructions: str
+    max_tokens: int
     routes: List[Dict[str, Any]]
     tools: List[Dict[str, Any]]
 
@@ -47,7 +48,8 @@ class AgentConfig:
                 name=agent_data.foundation_model,
                 endpoint=agent_data.foundation_model_endpoint,
             ),
-            system_prompt=agent_data.system_prompt,
+            agent_instructions=agent_data.agent_instructions,
+            max_tokens=agent_data.max_tokens,
             routes=agent_data.routes,
             tools=sanitized_tools,
         )
@@ -58,7 +60,8 @@ class AgentConfig:
             "namespace": self.namespace,
             "name": self.name,
             "foundation_model": self.foundation_model.to_dict(),
-            "system_prompt": self.system_prompt,
+            "agent_instructions": self.agent_instructions,
+            "max_tokens": self.max_tokens,
             "routes": self.routes,
             "tools": self.tools,
         }

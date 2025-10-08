@@ -14,7 +14,8 @@ class AgentData:
     name: str
     foundation_model: str
     foundation_model_endpoint: str
-    system_prompt: str
+    agent_instructions: str
+    max_tokens: int
     # TODO make this strongly typed
     routes: List[Dict[str, Any]] = field(factory=list)
     tools: List[Dict[str, Any]] = field(factory=list)
@@ -45,7 +46,8 @@ async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> Ag
         name=name,
         foundation_model=agent.foundation_model,
         foundation_model_endpoint=foundation_model_endpoint,
-        system_prompt=agent.system_prompt,
+        agent_instructions=agent.agent_instructions,
+        max_tokens=agent.max_tokens,
         routes=agent.routes.copy(),
         tools=tools,
     )

@@ -54,7 +54,7 @@ data:
         llm = OpenAILike(
           model=self.agent_config["foundation_model"]["name"],
           api_base=f"http://{self.agent_config['foundation_model']['endpoint']}/openai/v1",
-          max_tokens=512,
+          max_tokens=self.agent_config.get("max_tokens", 512),
           is_chat_model=True,
         )
 
@@ -117,13 +117,13 @@ data:
             except Exception as e:
               print(f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}")
 
-        system_prompt = self.agent_config.get("system_prompt", "You are a helpful AI assistant.")
+        agent_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
 
         self.agent = AgentWorkflow.from_tools_or_functions(
           tools,
           llm=llm,
           verbose=True,
-          system_prompt=system_prompt,
+          system_prompt=agent_instructions,
         )
         self.ctx = Context(self.agent)
 
@@ -168,17 +168,8 @@ data:
         ...
 
       def pipe(self, user_message, model_id, messages, body):
-        async def stream_agent():
-          handler = self.agent.run(user_message, ctx=self.ctx)
-          async for ev in handler.stream_events():
-            if isinstance(ev, AgentStream):
-              yield ev.delta
-          await handler
+        response = self.agent.chat(user_message)
 
-        async_gen = stream_agent()
-        try:
-          while True:
-            chunk = anyio.from_thread.run(async_gen.__anext__)
-            yield chunk
-        except StopAsyncIteration:
-          return
+        # Stream the response
+        for char in str(response):
+            yield char

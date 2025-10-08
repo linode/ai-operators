@@ -1,21 +1,11 @@
+{{- if .Values.agentOperator.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "ai-operators.fullname" . }}
+  name: {{ include "ai-operators.agent-operator.fullname" . }}
   labels:
-    {{- include "ai-operators.labels" . | nindent 4 }}
+    {{- include "ai-operators.agent-operator.labels" . | nindent 4 }}
 rules:
-# Watch and manage AkamaiKnowledgeBase custom resources
-- apiGroups: ["akamai.io"]
-  resources: ["akamaiknowledgebases"]
-  verbs: ["get", "list", "watch", "patch"]
-- apiGroups: ["akamai.io"]
-  resources: ["akamaiknowledgebases/status"]
-  verbs: ["get", "update", "patch"]
-- apiGroups: ["akamai.io"]
-  resources: ["akamaiknowledgebases/finalizers"]
-  verbs: ["update"]
-
 # Watch namespaces for namespace-level events
 - apiGroups: [""]
   resources: ["namespaces"]
@@ -41,7 +31,6 @@ rules:
   resources: ["customresourcedefinitions"]
   verbs: ["get", "list", "watch"]
 
-{{- if eq .Values.operator.name "agent-operator" }}
 # AkamaiAgent custom resources
 - apiGroups: ["akamai.io"]
   resources: ["akamaiagents"]
@@ -52,7 +41,14 @@ rules:
 - apiGroups: ["akamai.io"]
   resources: ["akamaiagents/finalizers"]
   verbs: ["update"]
+
+# AkamaiKnowledgeBase custom resources
+- apiGroups: ["akamai.io"]
+  resources: ["akamaiknowledgebases"]
+  verbs: ["get", "list", "watch"]
+
 # TODO strict this down further for only some namespaces
+# This is needed to deploy the agent via kubectl
 # Service discovery for foundation models and agent services
 - apiGroups: [""]
   resources: ["services"]
@@ -88,8 +84,7 @@ rules:
   resources: ["deployments"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 
-{{- if eq (.Values.env.PROVIDER | default "") "apl" }}
-# ArgoCD Applications (when PROVIDER=apl)
+{{- if eq (.Values.agentOperator.provider | default "") "apl" }}
 - apiGroups: ["argoproj.io"]
   resources: ["applications"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]

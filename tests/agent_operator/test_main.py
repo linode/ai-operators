@@ -197,14 +197,16 @@ async def test_lifecycle(
                     body=[
                         {
                             "op": "replace",
-                            "path": "/spec/systemPrompt",
+                            "path": "/spec/agentInstructions",
                             "value": "You're an updated helpful AI assistant",
                         }
                     ],
                 )
                 await sleep(5)
                 updated_spec = deepcopy(SAMPLE_AGENT_DICT)
-                updated_spec["systemPrompt"] = "You're an updated helpful AI assistant"
+                updated_spec["agentInstructions"] = (
+                    "You're an updated helpful AI assistant"
+                )
                 updated_agent = AkamaiAgent.from_spec(updated_spec)
                 if expect_call:
                     mock_update.assert_called_once_with(

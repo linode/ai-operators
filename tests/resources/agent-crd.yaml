@@ -30,18 +30,24 @@ spec:
             type: object
             required:
             - foundationModel
-            - systemPrompt
+            - agentInstructions
             properties:
               foundationModel:
                 description: The foundation model to use for the agent
                 type: string
                 minLength: 1
                 example: llama
-              systemPrompt:
-                description: System prompt that defines the agent's behavior
+              agentInstructions:
+                description: Instructions that define the agent's behavior and personality
                 type: string
                 minLength: 1
                 maxLength: 4096
+              maxTokens:
+                description: Maximum number of tokens for model responses
+                type: integer
+                default: 512
+                minimum: 1
+                maximum: 32000
               tools:
                 description: Tools available to the agent
                 type: array

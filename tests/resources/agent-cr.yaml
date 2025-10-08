@@ -5,7 +5,8 @@ metadata:
   namespace: team-demo
 spec:
   foundationModel: llama
-  systemPrompt: "You are a helpful AI assistant that helps users with their questions."
+  agentInstructions: "You are a helpful AI assistant that helps users with their questions."
+  maxTokens: 512
   tools:
   - type: knowledgeBase
     name: demo-kb

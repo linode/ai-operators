@@ -84,7 +84,8 @@ class AgentHandler:
                 name=name,
                 foundation_model=agent.foundation_model,
                 foundation_model_endpoint="",  # Not needed for deletion
-                system_prompt=agent.system_prompt,
+                agent_instructions=agent.agent_instructions,
+                max_tokens=agent.max_tokens,
                 routes=[],
                 tools=[],
             )
