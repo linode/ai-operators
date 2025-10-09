@@ -48,6 +48,7 @@ async def patch_custom_object(
 ) -> Dict[str, Any]:
     async with client.ApiClient() as api_client:
         custom_api = client.CustomObjectsApi(api_client)
+        # custom_api.api_client.set_default_header('Content-Type', 'application/json-patch+json')
         return await custom_api.patch_namespaced_custom_object(
             group=group,
             version=version,
@@ -55,6 +56,7 @@ async def patch_custom_object(
             plural=plural,
             name=name,
             body=body,
+            _content_type="application/merge-patch+json",
         )
 
 
