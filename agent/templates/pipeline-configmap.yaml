@@ -168,21 +168,21 @@ data:
         """Search the web for information."""
         ...
 
-    def pipe(self, user_message, model_id, messages, body):
-        async def stream_agent():
-            handler = self.agent.run(user_message, ctx=self.ctx)
-            async for ev in handler.stream_events():
-                if isinstance(ev, AgentStream):
-                    yield ev.delta
-            response = await handler
+      def pipe(self, user_message, model_id, messages, body):
+          async def stream_agent():
+              handler = self.agent.run(user_message, ctx=self.ctx)
+              async for ev in handler.stream_events():
+                  if isinstance(ev, AgentStream):
+                      yield ev.delta
+              response = await handler
 
-        import anyio
+          import anyio
 
-        # Convert async generator to sync generator
-        async_gen = stream_agent()
-        try:
-            while True:
-                chunk = anyio.from_thread.run(async_gen.__anext__)
-                yield chunk
-        except StopAsyncIteration:
-            return
+          # Convert async generator to sync generator
+          async_gen = stream_agent()
+          try:
+              while True:
+                  chunk = anyio.from_thread.run(async_gen.__anext__)
+                  yield chunk
+          except StopAsyncIteration:
+              return
