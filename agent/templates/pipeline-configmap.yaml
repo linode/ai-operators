@@ -135,7 +135,6 @@ data:
           llm=llm,
           verbose=True,
           system_prompt=agent_instructions,
-          max_iterations=5,  # Limit iterations to prevent infinite loops
         )
         self.ctx = Context(self.agent)
 
