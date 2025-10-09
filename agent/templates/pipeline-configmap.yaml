@@ -19,10 +19,10 @@ data:
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent.workflow import AgentWorkflow, AgentStream
-    from llama_index.core.workflow import Context, Event
+    from llama_index.core.agent import ReActAgent, FunctionCallingAgentWorker, AgentRunner
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
+    from llama_index.core.llms import ChatMessage
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
     from llama_index.vector_stores.postgres import PGVectorStore
 
@@ -36,7 +36,6 @@ data:
         self.agent_config = None
         self.index = None
         self.agent = None
-        self.ctx = None
 
       async def on_startup(self):
         # Load config from mounted ConfigMap
@@ -118,13 +117,24 @@ data:
             except Exception as e:
               print(f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}")
 
-        agent_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
+        # Enhance agent instructions to prevent looping
+        base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
+        agent_instructions = f"""{base_instructions}
+        When answering questions:
+        - Provide direct, concise answers
+        - Only use tools when necessary to answer the question
+        - Once you have gathered enough information, provide your final answer and STOP
+        - Do not continue calling tools after you have the answer
+        - Format your response clearly and concisely
+        - Limit the number of tool calls to avoid infinite loops
+        - Only output the answer in your final response, without extra commentary."""
 
         self.agent = AgentWorkflow.from_tools_or_functions(
           tools,
           llm=llm,
           verbose=True,
           system_prompt=agent_instructions,
+          max_iterations=5,  # Limit iterations to prevent infinite loops
         )
         self.ctx = Context(self.agent)
 
