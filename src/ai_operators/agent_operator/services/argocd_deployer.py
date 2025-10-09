@@ -93,6 +93,11 @@ class ArgoCDDeployer:
         app_name = _get_app_name(agent_data)
         application = _create_argocd_application(agent_data)
 
+        # Create patch body with only the fields that can change
+        patch_body = {
+            "spec": application["spec"],
+        }
+
         try:
             await patch_custom_object(
                 group=ARGOCD_API_ARGS["group"],
@@ -100,7 +105,7 @@ class ArgoCDDeployer:
                 namespace=ARGOCD_API_ARGS["namespace"],
                 plural=ARGOCD_API_ARGS["plural"],
                 name=app_name,
-                body=application,
+                body=patch_body,
             )
 
             self.logger.info(
