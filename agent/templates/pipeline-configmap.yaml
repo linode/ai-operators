@@ -178,10 +178,7 @@ data:
 
       async def pipe(self, user_message, model_id, messages, body):
         # Run the agent and get the response
-        handler = await self.agent.run(input=user_message)
-
-        # Get the final response
-        response = handler.get("response", "")
+        response = await self.agent.run(input=user_message)
 
         # Stream the response character by character
         for char in str(response):
