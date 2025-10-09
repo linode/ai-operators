@@ -44,6 +44,7 @@ data:
         with open(config_path, "r") as f:
           self.agent_config = json.load(f)
 
+        print(f"DEBUG: Loaded agent config: {json.dumps(self.agent_config, indent=2)}")
         self.name = self.agent_config["name"]
 
         # Build agent from config
