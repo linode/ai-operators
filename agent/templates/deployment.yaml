@@ -117,6 +117,9 @@ spec:
       - name: agent-config
         configMap:
           name: {{ include "pipelines.name" . }}-agent-config
+      - name: pipelines-files
+        configMap:
+          name: {{ include "pipelines.name" . }}-pipelines-files
       {{- with .Values.volumes }}
       {{- toYaml . | nindent 6 }}
       {{- end }}

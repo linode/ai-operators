@@ -104,8 +104,9 @@ commonEnvVars: []
 # -- Configure container volume mounts
 # ref: <https://kubernetes.io/docs/tasks/configure-pod-container/configure-volume-storage/>
 volumeMounts:
-  - name: config-volume
+  - name: pipelines-files
     mountPath: /opt
+    readOnly: true
 
 # -- Additional init containers to add to the deployment
 # ref: <https://kubernetes.io/docs/concepts/workloads/pods/init-containers/>
@@ -119,10 +120,11 @@ extraInitContainers: []
 
 # -- Configure pod volumes
 # ref: <https://kubernetes.io/docs/tasks/configure-pod-container/configure-volume-storage/>
-volumes:
-  - name: config-volume
-    configMap:
-      name: pipelines-files
+volumes: []
+  # Pipelines files volume is added automatically via template
+  # - name: pipelines-files
+  #   configMap:
+  #     name: {{ include "pipelines.name" . }}-pipelines-files
 
 # -- Extra resources to deploy with Open WebUI Pipelines
 extraResources:
