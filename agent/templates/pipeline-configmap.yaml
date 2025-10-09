@@ -19,7 +19,7 @@ data:
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent.workflow import AgentWorkflow, AgentStream
+    from llama_index.core.agent.workflow import ReActAgent
     from llama_index.core.workflow import Context, Event
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
@@ -130,7 +130,7 @@ data:
         - Limit the number of tool calls to avoid infinite loops
         - Only output the answer in your final response, without extra commentary."""
 
-        self.agent = AgentWorkflow.from_tools_or_functions(
+        self.agent = ReActAgent(
           tools,
           llm=llm,
           verbose=True,
@@ -179,20 +179,8 @@ data:
         ...
 
       def pipe(self, user_message, model_id, messages, body):
-          async def stream_agent():
-              handler = self.agent.run(user_message, ctx=self.ctx)
-              async for ev in handler.stream_events():
-                  if isinstance(ev, AgentStream):
-                      yield ev.delta
-              response = await handler
+        response = self.agent.chat(user_message)
 
-          import anyio
-
-          # Convert async generator to sync generator
-          async_gen = stream_agent()
-          try:
-              while True:
-                  chunk = anyio.from_thread.run(async_gen.__anext__)
-                  yield chunk
-          except StopAsyncIteration:
-              return
+        # Stream the response
+        for char in str(response):
+            yield char
