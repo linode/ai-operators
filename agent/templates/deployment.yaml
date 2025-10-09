@@ -76,11 +76,6 @@ spec:
         env:
         - name: NAMESPACE
           value: {{ include "pipelines.namespace" . }}
-        - name: SYSTEM_PROMPT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "pipelines.name" . }}-instructions
-              key: system-prompt
         - name: AGENT_NAME
           value: {{ include "pipelines.name" . }}
         {{- if .Values.extraEnvVars }}

@@ -96,7 +96,7 @@ extraEnvVars:
   - name: PIPELINES_REQUIREMENTS_PATH
     value: /opt/pipeline-requirements.txt
   - name: PIPELINES_URLS
-    value: file:///opt/pipeline.py
+    value: file:///opt/rag-pipeline.py
 
 # -- Additional environments variables on the output Deployment definition, common across environments.
 commonEnvVars: []

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pipelines-files
+  name: {{ include "pipelines.name" . }}-pipelines-files
 data:
   pipeline-requirements.txt: |
     requests
@@ -13,7 +13,7 @@ data:
     llama-index-tools-mcp
     opencv-python-headless
     kubernetes
-  pipeline.py: | # pragma: allowlist secret
+  rag-pipeline.py: | # pragma: allowlist secret
     import json
     import anyio
     from typing import Dict, Any
@@ -32,7 +32,7 @@ data:
 
     class Pipeline:
       def __init__(self):
-        self.name = None
+        self.name = "rag-pipeline"
         self.agent_config = None
         self.index = None
         self.agent = None
@@ -152,7 +152,7 @@ data:
         """Get database credentials from Kubernetes secret."""
         k8s_config.load_incluster_config()
         v1 = client.CoreV1Api()
-        secret = v1.read_namespaced_secret(
+        secret = v1.read_namespaced_secret( # pragma: allowlist secret
           name=kb_config.get("secret_name"),
           namespace=kb_config.get("secret_namespace", self.agent_config["namespace"]),
         )
