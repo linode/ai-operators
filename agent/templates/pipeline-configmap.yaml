@@ -19,7 +19,7 @@ data:
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent import ReActAgent
+    from llama_index.core.agent.workflow import ReActAgent
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
@@ -128,12 +128,12 @@ data:
         - Limit the number of tool calls to avoid infinite loops
         - Only output the answer in your final response, without extra commentary."""
 
-        self.agent = ReActAgent.from_tools(
-          tools,
+        self.agent = ReActAgent(
+          tools=tools,
           llm=llm,
           verbose=True,
           system_prompt=agent_instructions,
-          max_iterations=10,
+          timeout=120.0,
         )
 
       def _build_vector_index(self, kb_config: Dict[str, Any], kb_name: str):
@@ -176,9 +176,13 @@ data:
         """Search the web for information."""
         ...
 
-      def pipe(self, user_message, model_id, messages, body):
-        response = self.agent.chat(user_message)
+      async def pipe(self, user_message, model_id, messages, body):
+        # Run the agent and get the response
+        handler = await self.agent.run(input=user_message)
 
-        # Stream the response
+        # Get the final response
+        response = handler.get("response", "")
+
+        # Stream the response character by character
         for char in str(response):
             yield char
