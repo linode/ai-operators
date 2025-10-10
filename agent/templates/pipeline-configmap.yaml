@@ -122,7 +122,7 @@ data:
         - Only use a tool once per conversation to avoid loops."""
 
         if not tools:
-          self.agent = FunctionAgent.from_defaults(
+          self.agent = FunctionAgent(
             llm=llm,
             verbose=True,
             system_prompt=base_instructions,
