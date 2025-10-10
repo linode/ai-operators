@@ -198,24 +198,24 @@ data:
                 yield str(token.delta)
         else:
             # AgentWorkflow mode - has tools - needs async handling
-            async def stream_agent():
-                handler = self.agent.run(user_message, ctx=self.ctx)
-                async for event in handler.stream_events():
-                    if isinstance(event, AgentStream):
-                        # Yield delta immediately for streaming
-                        if event.delta:
-                            yield event.delta
-                # Get final response after all events
-                final_result = await handler
-                # If there's a response field, yield it
-                if isinstance(final_result, dict) and "response" in final_result:
-                    yield str(final_result["response"])
+            async def get_agent_response():
+                response = await self.agent.run(user_message, ctx=self.ctx)
+                # return str(result.get("response", result))
+                return str(response)
 
-            # Convert async generator to sync generator
-            async_gen = stream_agent()
-            try:
-                while True:
-                    chunk = anyio.from_thread.run(async_gen.__anext__)
-                    yield chunk
-            except StopAsyncIteration:
-                return
+                # Alternative: Stream events in real-time (commented out)
+                # handler = self.agent.run(user_message, ctx=self.ctx)
+                # async for event in handler.stream_events():
+                #     if isinstance(event, AgentStream):
+                #         if event.delta:
+                #             yield event.delta
+                # final_result = await handler
+                # if isinstance(final_result, dict) and "response" in final_result:
+                #     yield str(final_result["response"])
+
+            # Run async function and get response
+            result = anyio.from_thread.run(get_agent_response)
+
+            # Stream the response character by character
+            for char in result:
+                yield char
