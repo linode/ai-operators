@@ -177,9 +177,20 @@ data:
         ...
 
       def pipe(self, user_message, model_id, messages, body):
-        # Run the agent and get the response
-        response = self.agent.chat(message=user_message)
+        async def stream_agent():
+            handler = self.agent.run(user_message)
+            async for ev in handler.stream_events():
+                if isinstance(ev, AgentStream):
+                    yield ev.delta
+            response = await handler
 
-        # Stream the response character by character
-        for char in str(response):
-            yield char
+        import anyio
+
+        # Convert async generator to sync generator
+        async_gen = stream_agent()
+        try:
+            while True:
+                chunk = anyio.from_thread.run(async_gen.__anext__)
+                yield chunk
+        except StopAsyncIteration:
+            return
