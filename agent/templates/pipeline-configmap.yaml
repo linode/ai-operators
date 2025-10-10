@@ -122,7 +122,7 @@ data:
         If there are no tools available to answer the question, directly provide the answer based on your knowledge."""
 
         self.agent = AgentWorkflow.from_tools_or_functions(
-          tools=tools,
+          tools,
           llm=llm,
           verbose=True,
           system_prompt=agent_instructions,
