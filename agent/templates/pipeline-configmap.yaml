@@ -20,7 +20,6 @@ data:
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
     from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow, FunctionAgent
-    from llama_index.core.agent import FunctionCallingAgent
     from llama_index.core.workflow import Context
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
@@ -122,7 +121,12 @@ data:
         # Enhance agent instructions to prevent looping
         base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
         agent_instructions = f"""{base_instructions}
-        - Only use a tool once per conversation to avoid loops."""
+
+          IMPORTANT RULES:
+          - ONLY use tools when the user's question specifically requires information from the knowledge base
+          - For general questions, greetings, or questions you can answer directly, respond WITHOUT using any tools
+          - Use tools ending with _knowledge_base ONLY when the question asks about specific documentation, data, or domain knowledge
+          - Do not call tools multiple times - use them once and provide a final answer"""
 
         if not tools:
           # No tools - just use LLM directly
@@ -133,21 +137,14 @@ data:
         else:
           # Has tools - use AgentWorkflow
           print(f"Configured {len(tools)} tools, using AgentWorkflow")
-{{/*          self.agent = AgentWorkflow.from_tools_or_functions(*/}}
-{{/*            tools,*/}}
-{{/*            llm=llm,*/}}
-{{/*            verbose=True,*/}}
-{{/*            system_prompt=agent_instructions,*/}}
-{{/*            timeout=120.0,*/}}
-{{/*          )*/}}
-{{/*          self.ctx = Context(self.agent)*/}}
-          self.agent = FunctionCallingAgent.from_tools(
-              tools,
-              llm=llm,
-              verbose=True,
-              system_prompt=agent_instructions,
+          self.agent = AgentWorkflow.from_tools_or_functions(
+            tools,
+            llm=llm,
+            verbose=True,
+            system_prompt=agent_instructions,
+            timeout=120.0,
           )
-
+          self.ctx = Context(self.agent)
           self.system_prompt = None
 
       def _build_vector_index(self, kb_config: Dict[str, Any], kb_name: str):
@@ -228,4 +225,4 @@ data:
             import time
             for char in result:
                 yield char
-                time.sleep(0.01)  # 50ms delay between characters for typing effect
+                time.sleep(0.01)  # 10ms delay between characters for typing effect
