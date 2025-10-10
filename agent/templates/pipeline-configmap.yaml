@@ -119,7 +119,7 @@ data:
         # Enhance agent instructions to prevent looping
         base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
         agent_instructions = f"""{base_instructions}
-        If there are no tools available to answer the question, directly provide the answer based on your knowledge."""
+        - Only use a tool once per conversation to avoid loops."""
 
         self.agent = AgentWorkflow.from_tools_or_functions(
           tools,
@@ -134,7 +134,7 @@ data:
         db_credentials = self._get_db_credentials(kb_config)
 
         vector_store = PGVectorStore.from_params(
-          database=kb_name,  # Database name is the same as KB name
+          database=kb_config.get("table_name"),  # Database name is the same as KB name
           host=db_credentials["host"],
           port=db_credentials["port"],
           user=db_credentials["username"],
