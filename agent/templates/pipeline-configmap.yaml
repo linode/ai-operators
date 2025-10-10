@@ -119,16 +119,9 @@ data:
         # Enhance agent instructions to prevent looping
         base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
         agent_instructions = f"""{base_instructions}
-        When answering questions:
-        - Provide direct, concise answers
-        - Only use tools when necessary to answer the question
-        - Once you have gathered enough information, provide your final answer and STOP
-        - Do not continue calling tools after you have the answer
-        - Format your response clearly and concisely
-        - Limit the number of tool calls to avoid infinite loops
-        - Only output the answer in your final response, without extra commentary."""
+        If there are no tools available to answer the question, directly provide the answer based on your knowledge."""
 
-        self.agent = ReActAgent(
+        self.agent = AgentWorkflow.from_tools_or_functions(
           tools=tools,
           llm=llm,
           verbose=True,
@@ -179,12 +172,16 @@ data:
       def pipe(self, user_message, model_id, messages, body):
         async def stream_agent():
             handler = self.agent.run(user_message)
-            async for ev in handler.stream_events():
-                if isinstance(ev, AgentStream):
-                    yield ev.delta
-            response = await handler
-
-        import anyio
+            async for event in handler.stream_events():
+                if isinstance(event, AgentStream):
+                    # Yield delta immediately for streaming
+                    if event.delta:
+                        yield event.delta
+            # Get final response after all events
+            final_result = await handler
+            # If there's a response field, yield it
+            if isinstance(final_result, dict) and "response" in final_result:
+                yield str(final_result["response"])
 
         # Convert async generator to sync generator
         async_gen = stream_agent()
