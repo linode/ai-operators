@@ -19,7 +19,7 @@ data:
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow
+    from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow, FunctionAgent
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
