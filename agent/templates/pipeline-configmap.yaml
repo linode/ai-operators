@@ -220,4 +220,4 @@ data:
             import time
             for char in result:
                 yield char
-                time.sleep(0.01)  # 10ms delay between characters for typing effect
+                time.sleep(0.05)  # 50ms delay between characters for typing effect
