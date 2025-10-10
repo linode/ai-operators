@@ -216,6 +216,8 @@ data:
             # Run async function and get response
             result = anyio.from_thread.run(get_agent_response)
 
-            # Stream the response character by character
+            # Stream the response character by character with typing effect
+            import time
             for char in result:
                 yield char
+                time.sleep(0.01)  # 10ms delay between characters for typing effect
