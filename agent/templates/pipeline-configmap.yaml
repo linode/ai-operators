@@ -176,9 +176,9 @@ data:
         """Search the web for information."""
         ...
 
-      async def pipe(self, user_message, model_id, messages, body):
+      def pipe(self, user_message, model_id, messages, body):
         # Run the agent and get the response
-        response = await self.agent.chat(message=user_message)
+        response = self.agent.chat(message=user_message)
 
         # Stream the response character by character
         for char in str(response):
