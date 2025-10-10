@@ -207,7 +207,7 @@ data:
                 handler = self.agent.run(user_message, ctx=self.ctx)
                 async for event in handler.stream_events():
                     if isinstance(event, AgentStream):
-                        print(event.delta, end="", flush=True)
+                        print("Agent stream:", event.delta, end="", flush=True)
                     elif isinstance(event, AgentInput):
                         print("Agent input: ", event.input)  # the current input messages
                         print("Agent name:", event.current_agent_name)  # the current agent name
