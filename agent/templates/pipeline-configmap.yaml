@@ -190,8 +190,8 @@ data:
             response = self.agent.stream_chat(msgs)
 
             # Stream character by character
-            for char in str(response):
-                yield char
+            for token in response:
+                yield str(token.delta)
         else:
             # AgentWorkflow mode - has tools - needs async handling
             async def stream_agent():
