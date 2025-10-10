@@ -122,13 +122,13 @@ data:
         - Only use a tool once per conversation to avoid loops."""
 
         if not tools:
-          self.agent = ReActAgent(
-            llm=llm,
-            verbose=True,
-            system_prompt=base_instructions,
-            timeout=120.0,
-          )
+          # No tools - just use LLM directly
+          print("No tools configured, using LLM directly")
+          self.agent = llm
+          self.system_prompt = base_instructions
         else:
+          # Has tools - use AgentWorkflow
+          print(f"Configured {len(tools)} tools, using AgentWorkflow")
           self.agent = AgentWorkflow.from_tools_or_functions(
             tools,
             llm=llm,
@@ -136,6 +136,7 @@ data:
             system_prompt=agent_instructions,
             timeout=120.0,
           )
+          self.system_prompt = None
 
       def _build_vector_index(self, kb_config: Dict[str, Any], kb_name: str):
         """Builds a vector index based on KB config."""
@@ -178,24 +179,39 @@ data:
         ...
 
       def pipe(self, user_message, model_id, messages, body):
-        async def stream_agent():
-            handler = self.agent.run(user_message)
-            async for event in handler.stream_events():
-                if isinstance(event, AgentStream):
-                    # Yield delta immediately for streaming
-                    if event.delta:
-                        yield event.delta
-            # Get final response after all events
-            final_result = await handler
-            # If there's a response field, yield it
-            if isinstance(final_result, dict) and "response" in final_result:
-                yield str(final_result["response"])
+        # Check if using LLM directly (no tools) or AgentWorkflow
+        if hasattr(self, 'system_prompt') and self.system_prompt:
+            # LLM direct mode - no tools - simple synchronous chat
+            from llama_index.core.llms import ChatMessage
+            msgs = [
+                ChatMessage(role="system", content=self.system_prompt),
+                ChatMessage(role="user", content=user_message)
+            ]
+            response = self.agent.stream_chat(msgs)
 
-        # Convert async generator to sync generator
-        async_gen = stream_agent()
-        try:
-            while True:
-                chunk = anyio.from_thread.run(async_gen.__anext__)
-                yield chunk
-        except StopAsyncIteration:
-            return
+            # Stream character by character
+            for char in str(response):
+                yield char
+        else:
+            # AgentWorkflow mode - has tools - needs async handling
+            async def stream_agent():
+                handler = self.agent.run(user_message)
+                async for event in handler.stream_events():
+                    if isinstance(event, AgentStream):
+                        # Yield delta immediately for streaming
+                        if event.delta:
+                            yield event.delta
+                # Get final response after all events
+                final_result = await handler
+                # If there's a response field, yield it
+                if isinstance(final_result, dict) and "response" in final_result:
+                    yield str(final_result["response"])
+
+            # Convert async generator to sync generator
+            async_gen = stream_agent()
+            try:
+                while True:
+                    chunk = anyio.from_thread.run(async_gen.__anext__)
+                    yield chunk
+            except StopAsyncIteration:
+                return
