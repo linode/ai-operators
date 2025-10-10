@@ -91,7 +91,7 @@ data:
               kb_name = tool_spec.get("name", "knowledge_base")
 
               index = self._build_vector_index(kb_config, kb_name)
-              query_engine = index.as_query_engine(similarity_top_k=3)
+              query_engine = index.as_query_engine(similarity_top_k=1)
               tool = QueryEngineTool.from_defaults(
                 query_engine=query_engine,
                 name=f"{kb_name}_knowledge_base",
