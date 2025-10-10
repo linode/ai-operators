@@ -19,7 +19,7 @@ data:
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow, FunctionAgent
+    from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow, FunctionAgent, AgentInput, AgentOutput, ToolCall, ToolCallResult
     from llama_index.core.workflow import Context
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
@@ -91,7 +91,7 @@ data:
               kb_name = tool_spec.get("name", "knowledge_base")
 
               index = self._build_vector_index(kb_config, kb_name)
-              query_engine = index.as_query_engine(similarity_top_k=1)
+              query_engine = index.as_query_engine(similarity_top_k=3)
               tool = QueryEngineTool.from_defaults(
                 query_engine=query_engine,
                 name=f"{kb_name}_knowledge_base",
@@ -204,19 +204,23 @@ data:
         else:
             # AgentWorkflow mode - has tools - needs async handling
             async def get_agent_response():
-                response = await self.agent.run(user_message, ctx=self.ctx)
-                # return str(result.get("response", result))
-                return str(response)
-
-                # Alternative: Stream events in real-time (commented out)
-                # handler = self.agent.run(user_message, ctx=self.ctx)
-                # async for event in handler.stream_events():
-                #     if isinstance(event, AgentStream):
-                #         if event.delta:
-                #             yield event.delta
-                # final_result = await handler
-                # if isinstance(final_result, dict) and "response" in final_result:
-                #     yield str(final_result["response"])
+                handler = self.agent.run(user_message, ctx=self.ctx)
+                async for event in handler.stream_events():
+                    if isinstance(event, AgentStream):
+                        print(event.delta, end="", flush=True)
+                    elif isinstance(event, AgentInput):
+                        print("Agent input: ", event.input)  # the current input messages
+                        print("Agent name:", event.current_agent_name)  # the current agent name
+                    elif isinstance(event, AgentOutput):
+                        print("Agent output: ", event.response)  # the current full response
+                        print("Tool calls made: ", event.tool_calls)  # the selected tool calls, if any
+                        print("Raw LLM response: ", event.raw)  # the raw llm api response
+                    elif isinstance(event, ToolCallResult):
+                        print("Tool called: ", event.tool_name)  # the tool name
+                        print("Arguments to the tool: ", event.tool_kwargs)  # the tool kwargs
+                        print("Tool output: ", event.tool_output)  # the tool output
+                final_result = await handler
+                return str(final_result)
 
             # Run async function and get response
             result = anyio.from_thread.run(get_agent_response)
