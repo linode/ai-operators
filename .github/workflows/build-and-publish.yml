@@ -1,0 +1,107 @@
+name: Test Build Push
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '*'
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+  REGISTRY: docker.io
+  IMG_REF: linode/ai-operators
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install Dependencies
+        run: uv sync
+
+      - name: Run Test
+        run: uv run poe test
+
+  docker_build_push:
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set env
+        run: |
+          tag=${GITHUB_REF##*/}
+          echo "Creating tag: $tag"
+          echo "TAG=$tag" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Export dependencies
+        run: uv export --format=requirements.txt --output-file=dependencies/requirements.txt --no-dev --no-emit-project
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMG_REF }}:${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Docker tag and push. Git tag and push.
+        if: always() && (startsWith(github.ref, 'refs/heads/releases/') || startsWith(github.ref, 'refs/heads/main')) && startsWith(github.event.head_commit.message, 'chore(release)') && !github.event.act
+        id: git_tag
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          REPO: ${{ env.REGISTRY }}/${{ env.IMG_REF }}
+        run: |
+          git config --global user.email ai-operators@linode.com
+          git config --global user.name ai-operators-bot
+          TAG=${GITHUB_REF##*/}
+          release_tag=v$(grep '^version = ' pyproject.toml | sed -E 's/.*version = "([^"]+)".*/\1/')
+          echo tag=$release_tag >> $GITHUB_OUTPUT
+          echo "Releasing $REPO:$release_tag from ${{ env.REGISTRY }}/${{ env.IMG_REF }}:${{ env.TAG }}"
+          docker tag ${{ env.REGISTRY }}/${{ env.IMG_REF }}:${{ env.TAG }} $REPO:$release_tag
+          docker push $REPO:$release_tag
+          git tag -am "$COMMIT_MSG" $release_tag && git push --follow-tags
+
+      - name: Create GitHub release
+        if: always() && (startsWith(github.ref, 'refs/heads/releases/') || startsWith(github.ref, 'refs/heads/main')) && startsWith(github.event.head_commit.message, 'chore(release)') && !github.event.act
+        uses: ncipollo/release-action@v1.20.0
+        with:
+          tag: ${{ steps.git_tag.outputs.tag }}
+          name: Release ${{ steps.git_tag.outputs.tag }}
+          generateReleaseNotes: true
+          token: ${{ secrets.GITHUB_TOKEN }}

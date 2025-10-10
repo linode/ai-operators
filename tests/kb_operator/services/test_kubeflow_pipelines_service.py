@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 import pytest
 from kfp_server_api import V2beta1PipelineVersion
 
-from ai_operators.ml_operator import KubeflowPipelinesService
-from ai_operators.ml_operator import AkamaiKnowledgeBase
+from ai_operators.kb_operator.resource import AkamaiKnowledgeBase
+from ai_operators.kb_operator.services import KubeflowPipelinesService
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def test_kb() -> AkamaiKnowledgeBase:
 @pytest.fixture
 def service_with_mock_client():
     with patch(
-        "ml_operator.services.kubeflow_pipelines_service.Client"
+        "ai_operators.kb_operator.services.kubeflow_pipelines_service.Client"
     ) as mock_client_class:
         mock_client = Mock()
 
@@ -172,7 +172,7 @@ def verify_pipeline_execution_calls(mock_client):
     )
 
 
-@patch("ml_operator.services.kubeflow_pipelines_service.datetime")
+@patch("ai_operators.kb_operator.services.kubeflow_pipelines_service.datetime")
 def test_successful_pipeline_run(mock_datetime, test_kb, service_with_mock_client):
     mock_datetime.now.return_value.strftime.return_value = "20240101-120000"
     service, mock_client = service_with_mock_client
@@ -223,7 +223,7 @@ def test_custom_timeout(service_with_mock_client):
     mock_client.wait_for_run_completion.assert_called_once_with("run-abc", 3600)
 
 
-@patch("ml_operator.services.kubeflow_pipelines_service.Client")
+@patch("ai_operators.kb_operator.services.kubeflow_pipelines_service.Client")
 def test_client_connection_failure(mock_client_class):
     mock_client_class.side_effect = Exception("Connection refused")
     service = KubeflowPipelinesService("http://invalid-endpoint")

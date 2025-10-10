@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pipelines-files
+  name: {{ include "pipelines.name" . }}-pipelines-files
 data:
   pipeline-requirements.txt: |
     requests
@@ -13,14 +13,14 @@ data:
     llama-index-tools-mcp
     opencv-python-headless
     kubernetes
-  pipeline.py: | # pragma: allowlist secret
+  rag-pipeline.py: | # pragma: allowlist secret
     import json
     import anyio
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent.workflow import AgentWorkflow, AgentStream
-    from llama_index.core.workflow import Context, Event
+    from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow, FunctionAgent, AgentInput, AgentOutput, ToolCall, ToolCallResult
+    from llama_index.core.workflow import Context
     from llama_index.core import Settings, VectorStoreIndex, Document
     from llama_index.llms.openai_like import OpenAILike
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
@@ -32,11 +32,16 @@ data:
 
     class Pipeline:
       def __init__(self):
-        self.name = None
+        self.name = "rag-pipeline"
         self.agent_config = None
         self.index = None
         self.agent = None
         self.ctx = None
+        self.chat_engine = None
+        self.chat_engines = {}  # Store chat engines per session
+        self.agent_contexts = {}  # Store agent contexts per session
+        self.kb_index = None  # Store the KB index for creating new chat engines
+        self.simple_chat_engines = {}  # Store simple chat engines for LLM-only mode
 
       async def on_startup(self):
         # Load config from mounted ConfigMap
@@ -44,6 +49,7 @@ data:
         with open(config_path, "r") as f:
           self.agent_config = json.load(f)
 
+        print(f"DEBUG: Loaded agent config: {json.dumps(self.agent_config, indent=2)}")
         self.name = self.agent_config["name"]
 
         # Build agent from config
@@ -80,6 +86,7 @@ data:
 
         # Dynamically build tools from config
         tools = []
+        kb_tools = []  # Track knowledge base tools separately
         for tool_spec in self.agent_config.get("tools", []):
           tool_type = tool_spec.get("type")
 
@@ -97,6 +104,7 @@ data:
                 description=tool_spec.get("description", "Knowledge base search tool"),
               )
               tools.append(tool)
+              kb_tools.append((index, tool_spec))  # Store index and spec for chat engine
 
           elif tool_type == "function":
             # Function tool
@@ -117,22 +125,50 @@ data:
             except Exception as e:
               print(f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}")
 
-        agent_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
+        # Enhance agent instructions to prevent looping
+        base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
+        agent_instructions = f"""{base_instructions}
 
-        self.agent = AgentWorkflow.from_tools_or_functions(
-          tools,
-          llm=llm,
-          verbose=True,
-          system_prompt=agent_instructions,
-        )
-        self.ctx = Context(self.agent)
+          IMPORTANT RULES:
+          - ONLY use tools when the user's question specifically requires information from the knowledge base
+          - For general questions, greetings, or questions you can answer directly, respond WITHOUT using any tools
+          - Use tools ending with _knowledge_base ONLY when the question asks about specific documentation, data, or domain knowledge
+          - Do not call tools multiple times - use them once and provide a final answer"""
+
+        if not tools:
+          # No tools - just use LLM directly
+          print("No tools configured, using LLM directly")
+          self.agent = llm
+          self.system_prompt = base_instructions
+          self.ctx = None
+        elif len(tools) == 1 and len(kb_tools) == 1:
+          # Single knowledge base - use chat engine for fast RAG
+          print("Single knowledge base detected, using chat engine for fast RAG")
+          index, tool_spec = kb_tools[0]
+          self.kb_index = index  # Store for creating per-session chat engines
+          self.agent = None
+          self.system_prompt = base_instructions
+          self.ctx = None
+        else:
+          # Multiple tools or non-KB tools - use AgentWorkflow
+          print(f"Configured {len(tools)} tools, using AgentWorkflow")
+          self.agent = AgentWorkflow.from_tools_or_functions(
+            tools,
+            llm=llm,
+            verbose=True,
+            system_prompt=agent_instructions,
+            timeout=120.0,
+          )
+          # Don't create context here - create per session
+          self.ctx = None
+          self.system_prompt = None
 
       def _build_vector_index(self, kb_config: Dict[str, Any], kb_name: str):
         """Builds a vector index based on KB config."""
         db_credentials = self._get_db_credentials(kb_config)
 
         vector_store = PGVectorStore.from_params(
-          database=kb_name,  # Database name is the same as KB name
+          database=kb_config.get("table_name"),  # Database name is the same as KB name
           host=db_credentials["host"],
           port=db_credentials["port"],
           user=db_credentials["username"],
@@ -152,7 +188,7 @@ data:
         """Get database credentials from Kubernetes secret."""
         k8s_config.load_incluster_config()
         v1 = client.CoreV1Api()
-        secret = v1.read_namespaced_secret(
+        secret = v1.read_namespaced_secret( # pragma: allowlist secret
           name=kb_config.get("secret_name"),
           namespace=kb_config.get("secret_namespace", self.agent_config["namespace"]),
         )
@@ -167,9 +203,75 @@ data:
         """Search the web for information."""
         ...
 
-      def pipe(self, user_message, model_id, messages, body):
-        response = self.agent.chat(user_message)
+      def _get_or_create_chat_engine(self, session_id: str):
+        """Get or create a chat engine for a specific session."""
+        if session_id not in self.chat_engines:
+          self.chat_engines[session_id] = self.kb_index.as_chat_engine(
+            chat_mode="condense_plus_context",
+            streaming=True,
+            similarity_top_k=3,
+            system_prompt=self.system_prompt
+          )
+        return self.chat_engines[session_id]
 
-        # Stream the response
-        for char in str(response):
-            yield char
+      def _get_or_create_agent_context(self, session_id: str):
+        """Get or create an agent context for a specific session."""
+        if session_id not in self.agent_contexts:
+          self.agent_contexts[session_id] = Context(self.agent)
+        return self.agent_contexts[session_id]
+
+      def _get_or_create_simple_chat_engine(self, session_id: str):
+        """Get or create a simple chat engine for LLM-only mode."""
+        if session_id not in self.simple_chat_engines:
+          from llama_index.core.chat_engine import SimpleChatEngine
+          self.simple_chat_engines[session_id] = SimpleChatEngine.from_defaults(
+            llm=self.agent,
+            system_prompt=self.system_prompt
+          )
+        return self.simple_chat_engines[session_id]
+
+      def pipe(self, user_message, model_id, messages, body):
+        # Extract session ID from body or generate one
+        session_id = body.get("session_id", "default")
+        print(f"DEBUG: body: {body}")
+        print(f"DEBUG: Session ID: {session_id}")
+        print(f"DEBUG: Body keys: {body.keys()}")
+        print(f"DEBUG: Active sessions - chat_engines: {list(self.chat_engines.keys())}, simple_chat: {list(self.simple_chat_engines.keys())}, agent_contexts: {list(self.agent_contexts.keys())}")
+
+        # Check which mode: chat engine (single KB), LLM direct (no tools), or AgentWorkflow (multiple tools)
+        if self.kb_index:
+            # Chat engine mode - single knowledge base - fast RAG with per-session context
+            try:
+                chat_engine = self._get_or_create_chat_engine(session_id)
+                streaming_response = chat_engine.stream_chat(user_message)
+                # Yield tokens for streaming output
+                for token in streaming_response.response_gen:
+                    yield token
+            except Exception as e:
+                yield f"Error: {str(e)}"
+        elif hasattr(self, 'system_prompt') and self.system_prompt and self.agent:
+            # LLM direct mode - no tools - use SimpleChatEngine with per-session history
+            try:
+                simple_chat = self._get_or_create_simple_chat_engine(session_id)
+                streaming_response = simple_chat.stream_chat(user_message)
+                # Stream tokens
+                for token in streaming_response.response_gen:
+                    yield token
+            except Exception as e:
+                yield f"Error: {str(e)}"
+        else:
+            # AgentWorkflow mode - has tools - needs async handling with per-session context
+            async def get_agent_response():
+                ctx = self._get_or_create_agent_context(session_id)
+                handler = self.agent.run(user_message, ctx=ctx)
+                final_result = await handler
+                return str(final_result)
+
+            # Run async function and get response
+            result = anyio.from_thread.run(get_agent_response)
+
+            # Stream the response character by character with typing effect
+            import time
+            for char in result:
+                yield char
+                time.sleep(0.01)  # 10ms delay between characters for typing effect

@@ -1,4 +1,4 @@
-from ai_operators.agent_operator import AkamaiAgent
+from ai_operators.agent_operator.resource import AkamaiAgent
 
 # Global test objects, reused in tests
 SAMPLE_AGENT_DICT = {
@@ -12,7 +12,7 @@ SAMPLE_AGENT_OBJECT = AkamaiAgent(
     foundation_model="llama",
     agent_instructions="You're a helpful AI assistant",
     max_tokens=512,
-    knowledge_base="test-kb",
+    tools=[],
 )
 
 # Test objects for updates
@@ -27,5 +27,5 @@ UPDATED_AGENT_OBJECT = AkamaiAgent(
     foundation_model="llama",
     agent_instructions="You're an updated helpful AI assistant",
     max_tokens=1024,
-    knowledge_base="test-kb",
+    tools=[],
 )

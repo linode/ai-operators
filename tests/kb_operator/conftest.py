@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from kfp.compiler import Compiler
 
-from ai_operators.ml_operator import AkamaiKnowledgeBase
+from ai_operators.kb_operator.resource import AkamaiKnowledgeBase
 
 # Global test objects, reused in tests
 SAMPLE_KB_DICT = {

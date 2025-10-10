@@ -1,6 +1,6 @@
-from ai_operators.ml_operator.converter import converter
-from ai_operators.ml_operator import AkamaiKnowledgeBase
-from tests.ml_operator.conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
+from ai_operators.kb_operator.converter import converter
+from ai_operators.kb_operator.resource import AkamaiKnowledgeBase
+from tests.kb_operator.conftest import SAMPLE_KB_OBJECT, SAMPLE_KB_DICT
 
 
 def test_deserialization():
