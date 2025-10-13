@@ -16,19 +16,27 @@ data:
   rag-pipeline.py: | # pragma: allowlist secret
     import json
     import anyio
+    import base64
+    import time
+    import requests
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
-    from llama_index.core.agent.workflow import ReActAgent, AgentStream, AgentWorkflow, FunctionAgent, AgentInput, AgentOutput, ToolCall, ToolCallResult
+    from llama_index.core.agent.workflow import AgentWorkflow
     from llama_index.core.workflow import Context
     from llama_index.core import Settings, VectorStoreIndex, Document
+    from llama_index.core.llms import ChatMessage
+    from llama_index.core.chat_engine import SimpleChatEngine
     from llama_index.llms.openai_like import OpenAILike
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
     from llama_index.vector_stores.postgres import PGVectorStore
-
     from kubernetes import client, config as k8s_config
-    import base64
 
+    # Configuration constants
+    SIMILARITY_TOP_K = 3
+    MAX_ROUTING_DEPTH = 3
+    REQUEST_TIMEOUT = 120
+    TYPING_DELAY = 0.01  # 10ms delay between characters
 
     class Pipeline:
       def __init__(self):
@@ -97,7 +105,7 @@ data:
               kb_name = tool_spec.get("name", "knowledge_base")
 
               index = self._build_vector_index(kb_config, kb_name)
-              query_engine = index.as_query_engine(similarity_top_k=3)
+              query_engine = index.as_query_engine(similarity_top_k=SIMILARITY_TOP_K)
               tool = QueryEngineTool.from_defaults(
                 query_engine=query_engine,
                 name=f"{kb_name}_knowledge_base",
@@ -118,6 +126,7 @@ data:
 
           elif tool_type == "mcpServer":
             # MCP server tool - skip if endpoint is unreachable
+            # TODO Look in to auth headers
             try:
               mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
               mcp_tool = McpToolSpec(client=mcp_client)
@@ -203,13 +212,145 @@ data:
         """Search the web for information."""
         ...
 
+      def _check_and_route(self, user_message: str, body: dict):
+        """Check if question should be routed to another agent based on conditions.
+
+        Args:
+          user_message: The user's question
+          body: Request body containing routing chain
+
+        Returns:
+          (should_route: bool, response_generator: generator or None)
+        """
+        routes = self.agent_config.get("routes", [])
+        if not routes:
+          return False, None
+
+        namespace = self.agent_config.get("namespace", "default")
+        current_agent = self.agent_config.get("name")
+
+        # Check routing chain for loop prevention
+        routing_chain = body.get("x-routing-chain", "")
+        if routing_chain:
+          chain_list = routing_chain.split("->")
+          # Check if current agent is already in the chain
+          if current_agent in chain_list:
+            print(f"WARNING: Routing loop detected: {routing_chain} -> {current_agent}")
+            return False, None
+          # Check max depth
+          if len(chain_list) >= MAX_ROUTING_DEPTH:
+            print(f"WARNING: Max routing depth ({MAX_ROUTING_DEPTH}) reached: {routing_chain}")
+            return False, None
+          new_chain = f"{routing_chain}->{current_agent}"
+        else:
+          new_chain = current_agent
+
+        # Build route options for single LLM evaluation
+        route_options = []
+        agent_names = []
+
+        for route in routes:
+          condition = route.get("condition", "")
+          target_agent = route.get("agent", "")
+
+          if not condition or not target_agent:
+            continue
+
+          # Skip if routing to self
+          if target_agent == current_agent:
+            print(f"DEBUG: Skipping self-route to {target_agent}")
+            continue
+
+          route_options.append(f"- Route to '{target_agent}' if: {condition}")
+          agent_names.append(target_agent)
+
+        if not route_options:
+          return False, None
+
+        # Single LLM call for all routes
+        eval_prompt = f"""Given this question, determine which agent (if any) should handle it.
+
+        Question: {user_message}
+
+        Available routes:
+        {chr(10).join(route_options)}
+
+        Answer with ONLY the agent name (e.g., '{agent_names[0]}') or 'none' if no route matches."""
+
+        print(f"DEBUG: Evaluating routes with single LLM call")
+        msgs = [ChatMessage(role="user", content=eval_prompt)]
+        llm = Settings.llm
+        response = llm.chat(msgs)
+        evaluation = str(response.message.content).strip().lower()
+
+        print(f"DEBUG: Route evaluation result: {evaluation}")
+
+        # Check if evaluation matches an agent name
+        if evaluation == "none":
+          return False, None
+
+        # Find matching agent (case-insensitive)
+        target_agent = None
+        for agent_name in agent_names:
+          if agent_name.lower() == evaluation:
+            target_agent = agent_name
+            break
+
+        if not target_agent:
+          print(f"WARNING: LLM returned unknown agent: {evaluation}")
+          return False, None
+
+        # Route to target agent
+        target_url = f"http://{target_agent}.{namespace}.svc.cluster.local:9099/v1/chat/completions"
+        print(f"DEBUG: Routing to {target_url} (chain: {new_chain})")
+
+        try:
+          response = requests.post(
+            target_url,
+            json={
+              "model": "rag-pipeline",
+              "messages": [{"role": "user", "content": user_message}],
+              "stream": True,
+              "x-routing-chain": new_chain
+            },
+            stream=True,
+            timeout=REQUEST_TIMEOUT
+          )
+          response.raise_for_status()
+
+          # Generator to stream response
+          def stream_routed_response():
+            for line in response.iter_lines():
+              if line:
+                line_text = line.decode('utf-8')
+                if line_text.startswith('data: '):
+                  data = line_text[6:]
+                  if data.strip() == '[DONE]':
+                    break
+                  try:
+                    import json as json_lib
+                    chunk = json_lib.loads(data)
+                    if 'choices' in chunk and len(chunk['choices']) > 0:
+                      delta = chunk['choices'][0].get('delta', {})
+                      content = delta.get('content', '')
+                      if content:
+                        yield content
+                  except:
+                    pass
+
+          return True, stream_routed_response()
+
+        except Exception as e:
+          print(f"ERROR: Failed to route to {target_agent}: {e}")
+          return False, None
+
       def _get_or_create_chat_engine(self, session_id: str):
         """Get or create a chat engine for a specific session."""
         if session_id not in self.chat_engines:
           self.chat_engines[session_id] = self.kb_index.as_chat_engine(
             chat_mode="condense_plus_context",
             streaming=True,
-            similarity_top_k=3,
+            similarity_top_k=SIMILARITY_TOP_K,
             system_prompt=self.system_prompt
           )
         return self.chat_engines[session_id]
@@ -223,7 +364,6 @@ data:
       def _get_or_create_simple_chat_engine(self, session_id: str):
         """Get or create a simple chat engine for LLM-only mode."""
         if session_id not in self.simple_chat_engines:
-          from llama_index.core.chat_engine import SimpleChatEngine
           self.simple_chat_engines[session_id] = SimpleChatEngine.from_defaults(
             llm=self.agent,
             system_prompt=self.system_prompt
@@ -237,6 +377,19 @@ data:
         print(f"DEBUG: Session ID: {session_id}")
         print(f"DEBUG: Body keys: {body.keys()}")
         print(f"DEBUG: Active sessions - chat_engines: {list(self.chat_engines.keys())}, simple_chat: {list(self.simple_chat_engines.keys())}, agent_contexts: {list(self.agent_contexts.keys())}")
+
+        # Check if question should be routed to another agent
+        should_route, routed_response = self._check_and_route(user_message, body)
+        if should_route and routed_response:
+          print("DEBUG: Routing to another agent")
+          try:
+            for chunk in routed_response:
+              yield chunk
+            return
+          except Exception as e:
+            print(f"ERROR: Error streaming routed response: {e}")
+            yield f"Error routing to agent: {str(e)}"
+            return
 
         # Check which mode: chat engine (single KB), LLM direct (no tools), or AgentWorkflow (multiple tools)
         if self.kb_index:
@@ -271,7 +424,6 @@ data:
             result = anyio.from_thread.run(get_agent_response)
 
             # Stream the response character by character with typing effect
-            import time
             for char in result:
                 yield char
-                time.sleep(0.01)  # 10ms delay between characters for typing effect
+                time.sleep(TYPING_DELAY)
