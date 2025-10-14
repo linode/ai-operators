@@ -53,8 +53,8 @@ spec:
         - --standalone
         {{- else }}
         - --peering={{ .Values.kopf.peeringName }}
-        - "--liveness=http://0.0.0.0:8080/healthz"
         {{- end }}
+        - "--liveness=http://0.0.0.0:8080/healthz"
         env:
         - name: KOPF_LOG_FORMAT
           value: "json"

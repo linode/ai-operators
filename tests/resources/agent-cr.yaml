@@ -8,6 +8,15 @@ spec:
   foundationModelEndpoint: "http://llama-service.default.svc.cluster.local:8080/openai/v1"
   agentInstructions: "You are a helpful AI assistant that helps users with their questions."
   maxTokens: 512
+  routes:
+   - agent: kubernetes-expert
+     condition: If the question is about Kubernetes
+     apiUrl: https://my-other-agent.lke496760.akamai-apl.net
+     apiKey: xxx # pragma: allowlist secret
+   - agent: app-platform-specialist
+     condition: If the question is about App platform
+     apiUrl: https://my-other-agent.lke496760.akamai-apl.net
+     apiKey: xxx # pragma: allowlist secret
   tools:
   - type: knowledgeBase
     name: demo-kb
