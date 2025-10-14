@@ -18,9 +18,8 @@ ADD /src /src
 ADD /dependencies/requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt && pip install .
 
-ENV OPERATOR_MODULE=${OPERATOR_MODULE}
-# Copy agent chart only for ai-operator
-COPY agent /app/agent
+# Copy agent chart (for agent-operator deployments)
+COPY charts/agent /app/agent
 
 # Default command - can be overridden in deployment
 CMD ["kopf", "run", "-m", "ai_operators.kb_operator.main"]

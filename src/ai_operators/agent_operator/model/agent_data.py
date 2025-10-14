@@ -2,7 +2,6 @@ from typing import Dict, Any, List
 from attrs import define, field
 
 from ai_operators.agent_operator.resource import AkamaiAgent
-from ai_operators.agent_operator.utils.k8s import get_foundation_model_endpoint
 from ai_operators.agent_operator.model.kb_data import create_kb_data
 
 
@@ -36,16 +35,11 @@ async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> Ag
 
         tools.append(tool_copy)
 
-    # Get foundation model endpoint from service discovery
-    foundation_model_endpoint = await get_foundation_model_endpoint(
-        agent.foundation_model
-    )
-
     return AgentData(
         namespace=namespace,
         name=name,
         foundation_model=agent.foundation_model,
-        foundation_model_endpoint=foundation_model_endpoint,
+        foundation_model_endpoint=agent.foundation_model_endpoint,
         agent_instructions=agent.agent_instructions,
         max_tokens=agent.max_tokens,
         routes=agent.routes.copy(),

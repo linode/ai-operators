@@ -27,50 +27,54 @@ A few utility commands are set up using `poe`. Outside the virtual environment,
 
 ```
 ai-operators
-├── agent         # Agent Helm chart
-├── chart         # Combined Helm chart for both operators
-├── dependencies  # Generated requirements.txt for image generation
-├── src           # Operator packages (kb_operator and agent_operator)
-└── tests         # pytest modules and resources
+├── charts/          # Helm charts
+│   ├── kb-operator/      # KB Operator chart
+│   ├── agent-operator/   # Agent Operator chart
+│   └── agent/            # Agent deployment chart
+├── dependencies/    # Generated requirements.txt for image generation
+├── src/            # Operator packages (kb_operator and agent_operator)
+└── tests/          # pytest modules and resources
 ```
 
-## Helm Chart Configuration
+## Helm Charts
 
-The `chart/` directory contains a unified Helm chart that can deploy both operators. You can enable or disable each operator independently using values:
+The repository contains three separate Helm charts:
 
-```yaml
-# Enable/disable operators
-kbOperator:
-  enabled: true    # Knowledge Base operator
-  replicaCount: 1
-  image:
-    repository: linode/kb-operator
-    tag: "0.1.0"
-  # Additional KB operator config...
+### KB Operator Chart (`charts/kb-operator/`)
+Manages knowledge base resources with Kubeflow Pipelines.
 
-agentOperator:
-  enabled: false   # Agent operator
-  replicaCount: 1
-  provider: linode # linode or apl
-  image:
-    repository: linode/agent-operator
-    tag: "0.1.0"
-  # Additional agent operator config...
+```bash
+# Install KB operator
+helm install kb-operator ./charts/kb-operator
+
+# With custom values
+helm install kb-operator ./charts/kb-operator \
+  --set image.tag=latest \
+  --set resources.limits.memory=1Gi
 ```
+
+### Agent Operator Chart (`charts/agent-operator/`)
+Manages AI agent deployments with foundation models.
+
+```bash
+# Install Agent operator (Linode provider)
+helm install agent-operator ./charts/agent-operator \
+  --set provider=linode
+
+# Install Agent operator (APL/ArgoCD provider)
+helm install agent-operator ./charts/agent-operator \
+  --set provider=apl \
+  --set env.AGENT_CHART_REPO_URL=https://github.com/linode/ai-operators.git \
+  --set env.AGENT_CHART_REPO_PATH=charts/agent
+```
+
+### Agent Chart (`charts/agent/`)
+Deployed by the Agent Operator for individual agent instances.
 
 **Deploy both operators:**
 ```bash
-helm install ai-operators ./chart
-```
-
-**Deploy only KB operator:**
-```bash
-helm install ai-operators ./chart --set agentOperator.enabled=false
-```
-
-**Deploy only Agent operator:**
-```bash
-helm install ai-operators ./chart --set kbOperator.enabled=false --set agentOperator.enabled=true
+helm install kb-operator ./charts/kb-operator
+helm install agent-operator ./charts/agent-operator
 ```
 
 ## Testing agent-operator
@@ -106,13 +110,12 @@ docker build \
 kind load docker-image agent-operator:local --name agent-operator-test
 
 # Deploy the agent-operator with Linode provider
-helm install -n team-demo ai-operators ./chart \
-  --set agentOperator.enabled=true \
-  --set agentOperator.provider=linode \
-  --set agentOperator.image.repository=agent-operator \
-  --set agentOperator.image.tag=local \
-  --set agentOperator.image.pullPolicy=Never \
-  --set kbOperator.enabled=false \
+helm install -n team-demo agent-operator ./charts/agent-operator \
+  --set provider=linode \
+  --set image.repository=agent-operator \
+  --set image.tag=local \
+  --set image.pullPolicy=Never \
+  --set watchNamespaces=team-demo \
   --wait \
   --timeout=5m
 ```
@@ -129,10 +132,6 @@ kubectl create secret generic pgvector-app -n team-demo \
 
 **5. Test the operator**
 ```bash
-# Create a test foundation model service (required for agent deployment)
-kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
-kubectl label service llama-service modelType=foundation modelName=llama -n team-demo
-
 # Create a test agent resource
 kubectl apply -f tests/resources/kb-crd.yaml
 kubectl apply -f tests/resources/agent-cr.yaml
@@ -182,16 +181,14 @@ kind load docker-image agent-operator:local --name agent-operator-test
 ```bash
 
 # Deploy the agent-operator with APL provider
-helm install -n team-demo ai-operators ./chart \
-  --set agentOperator.enabled=true \
-  --set agentOperator.provider=apl \
-  --set agentOperator.image.repository=agent-operator \
-  --set agentOperator.image.tag=local \
-  --set agentOperator.image.pullPolicy=Never \
-  --set agentOperator.env.AGENT_CHART_REPO_URL=https://github.com/linode/ai-operators.git \
-  --set agentOperator.env.AGENT_CHART_REPO_REVISION=main \
-  --set agentOperator.env.AGENT_CHART_PATH=agent \
-  --set kbOperator.enabled=false \
+helm install -n team-demo agent-operator ./charts/agent-operator \
+  --set provider=apl \
+  --set image.repository=agent-operator \
+  --set image.tag=local \
+  --set image.pullPolicy=Never \
+  --set env.AGENT_CHART_REPO_URL=https://github.com/linode/ai-operators.git \
+  --set env.AGENT_CHART_REPO_REVISION=main \
+  --set env.AGENT_CHART_PATH=charts/agent \
   --wait \
   --timeout=5m
 ```
@@ -208,13 +205,8 @@ kubectl create secret generic pgvector-app -n team-demo \
 
 **6. Test the operator**
 ```bash
-# Create a test foundation model service (required for agent deployment)
-kubectl create service clusterip llama-service --tcp=8000:8000 -n team-demo
-kubectl label service llama-service modelType=foundation modelName=llama -n team-demo
-
 # Create a test agent resource
 kubectl apply -f tests/resources/kb-crd.yaml
-kubectl apply -f tests/resources/kb-cr.yaml
 kubectl apply -f tests/resources/agent-cr.yaml
 
 # Check the agent resource
@@ -378,13 +370,11 @@ docker build -t ml-operator:local .
 kind load docker-image ml-operator:local --name ml-operator-test
 
 # Deploy the ML-Operator (KB Operator)
-helm install -n ml-operator ai-operators ./chart \
-  --set kbOperator.enabled=true \
-  --set kbOperator.image.repository=ml-operator \
-  --set kbOperator.image.tag=local \
-  --set kbOperator.image.pullPolicy=Never \
-  --set kbOperator.env.KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local \
-  --set agentOperator.enabled=false \
+helm install -n ml-operator kb-operator ./charts/kb-operator \
+  --set image.repository=ml-operator \
+  --set image.tag=local \
+  --set image.pullPolicy=Never \
+  --set env.KUBEFLOW_ENDPOINT=http://ml-pipeline-ui.kfp.svc.cluster.local \
   --wait \
   --timeout=5m
 ```

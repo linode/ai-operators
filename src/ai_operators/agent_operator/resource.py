@@ -8,6 +8,7 @@ from ai_operators.agent_operator.converter import converter
 @define
 class AkamaiAgent:
     foundation_model: str
+    foundation_model_endpoint: str
     agent_instructions: str
     max_tokens: int = 512
     # TODO make this strongly typed

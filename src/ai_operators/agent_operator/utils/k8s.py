@@ -97,25 +97,3 @@ async def fetch_knowledge_base_config(
 
     spec = kb_cr_dict.get("spec", {})
     return AkamaiKnowledgeBase.from_spec(spec)
-
-
-async def get_foundation_model_endpoint(model_name: str) -> str:
-    """Discover foundation model endpoint by querying services with labels modelType and modelName."""
-    async with client.ApiClient() as api_client:
-        core_api = client.CoreV1Api(api_client)
-
-        # Query all services with modelType and modelName labels
-        label_selector = f"modelType,modelName={model_name}"
-        services = await core_api.list_service_for_all_namespaces(
-            label_selector=label_selector
-        )
-
-        if services.items:
-            service = services.items[0]
-            service_name = service.metadata.name
-            service_namespace = service.metadata.namespace
-            return f"{service_name}.{service_namespace}.svc.cluster.local"
-        else:
-            raise ValueError(
-                f"Foundation model '{model_name}' not found. No service with labels modelType,modelName={model_name}"
-            )
