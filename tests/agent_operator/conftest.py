@@ -6,7 +6,32 @@ SAMPLE_AGENT_DICT = {
     "foundationModelEndpoint": "http://llama-service:8080/openai/v1",
     "agentInstructions": "You're a helpful AI assistant",
     "maxTokens": 512,
-    "knowledgeBase": "test-kb",
+    "routes": [
+        {
+            "agent": "specialist-agent",
+            "condition": "If the question is about specialized topics",
+            "apiUrl": "https://specialist.example.com/v1/chat",
+        }
+    ],
+    "tools": [
+        {
+            "type": "knowledgeBase",
+            "name": "test-kb",
+            "description": "Test knowledge base",
+        },
+        {
+            "type": "function",
+            "name": "web_search",
+            "description": "Search the web",
+            "apiUrl": "https://search-api.example.com/search",
+        },
+        {
+            "type": "subWorkflow",
+            "name": "email-workflow",
+            "description": "Send emails via N8N",
+            "apiUrl": "https://n8n.example.com/webhook/send-email",
+        },
+    ],
 }
 
 SAMPLE_AGENT_OBJECT = AkamaiAgent(
@@ -14,7 +39,26 @@ SAMPLE_AGENT_OBJECT = AkamaiAgent(
     foundation_model_endpoint="http://llama-service:8080/openai/v1",
     agent_instructions="You're a helpful AI assistant",
     max_tokens=512,
-    tools=[],
+    routes=[
+        {
+            "agent": "specialist-agent",
+            "condition": "If the question is about specialized topics",
+            "apiUrl": "https://specialist.example.com/v1/chat",
+        }
+    ],
+    tools=[
+        {
+            "type": "knowledgeBase",
+            "name": "test-kb",
+            "description": "Test knowledge base",
+        },
+        {
+            "type": "function",
+            "name": "web_search",
+            "description": "Search the web",
+            "apiUrl": "https://search-api.example.com/search",
+        },
+    ],
 )
 
 # Test objects for updates
@@ -23,7 +67,26 @@ UPDATED_AGENT_DICT = {
     "foundationModelEndpoint": "http://llama-service:8080/openai/v1",
     "agentInstructions": "You're an updated helpful AI assistant",
     "maxTokens": 1024,
-    "knowledgeBase": "test-kb",
+    "routes": [
+        {
+            "agent": "updated-specialist",
+            "condition": "If the question is about updated topics",
+            "apiUrl": "https://updated-specialist.example.com/v1/chat",
+        }
+    ],
+    "tools": [
+        {
+            "type": "knowledgeBase",
+            "name": "test-kb",
+            "description": "Updated knowledge base",
+        },
+        {
+            "type": "mcpServer",
+            "name": "mcp-tools",
+            "description": "MCP server tools",
+            "apiUrl": "https://mcp.example.com/api",
+        },
+    ],
 }
 
 UPDATED_AGENT_OBJECT = AkamaiAgent(
@@ -31,5 +94,18 @@ UPDATED_AGENT_OBJECT = AkamaiAgent(
     foundation_model_endpoint="http://llama-service:8080/openai/v1",
     agent_instructions="You're an updated helpful AI assistant",
     max_tokens=1024,
-    tools=[],
+    routes=[
+        {
+            "agent": "updated-specialist",
+            "condition": "If the question is about updated topics",
+            "apiUrl": "https://updated-specialist.example.com/v1/chat",
+        }
+    ],
+    tools=[
+        {
+            "type": "knowledgeBase",
+            "name": "test-kb",
+            "description": "Updated knowledge base",
+        }
+    ],
 )
