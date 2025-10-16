@@ -19,6 +19,7 @@ data:
     import base64
     import time
     import requests
+    from functools import partial
     from typing import Dict, Any
     from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
     from llama_index.core.tools import QueryEngineTool, FunctionTool
@@ -67,9 +68,11 @@ data:
         # Load LLM from config
         llm = OpenAILike(
           model=self.agent_config["foundation_model"]["name"],
-          api_base=f"http://{self.agent_config['foundation_model']['endpoint']}/openai/v1",
+          api_base=f"{self.agent_config['foundation_model']['endpoint']}",
           max_tokens=self.agent_config.get("max_tokens", 512),
           is_chat_model=True,
+          timeout=120.0,
+          max_retries=2,
         )
 
         Settings.llm = llm
@@ -115,24 +118,48 @@ data:
               kb_tools.append((index, tool_spec))  # Store index and spec for chat engine
 
           elif tool_type == "function":
-            # Function tool
-            fn = self._resolve_function(tool_spec.get("name"))
+            # API-based function tool
+            if not tool_spec.get("apiUrl"):
+              print(f"Warning: function tool '{tool_spec.get('name')}' missing apiUrl, skipping")
+              continue
+            fn = partial(self._call_external_api, tool_spec)
             tool = FunctionTool.from_defaults(
               fn=fn,
-              name=f"{tool_spec.get('name')}_function",
-              description=tool_spec.get("description", "Function tool"),
+              name=f"{tool_spec.get('name')}",
+              description=tool_spec.get("description", "Call an external API endpoint with authentication."),
+            )
+            tools.append(tool)
+
+          elif tool_type == "subWorkflow":
+            # SubWorkflow tool (N8N, Dify, Flowise) - same as API-based function
+            if not tool_spec.get("apiUrl"):
+              print(f"Warning: subWorkflow tool '{tool_spec.get('name')}' missing apiUrl, skipping")
+              continue
+            # Use partial to bind tool_spec
+            fn = partial(self._call_external_api, tool_spec)
+            tool = FunctionTool.from_defaults(
+              fn=fn,
+              name=f"{tool_spec.get('name')}",
+              description=tool_spec.get("description", "Workflow automation tool"),
             )
             tools.append(tool)
 
           elif tool_type == "mcpServer":
-            # MCP server tool - skip if endpoint is unreachable
-            # TODO Look in to auth headers
             try:
-              mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
+              endpoint = tool_spec.get("apiUrl")
+              api_key = tool_spec.get("apiKey")
+
+              # Create MCP client with auth headers if API key is provided
+              if api_key:
+                mcp_client = BasicMCPClient(endpoint, headers={"Authorization": f"Bearer {api_key}"})
+              else:
+                mcp_client = BasicMCPClient(endpoint)
+
               mcp_tool = McpToolSpec(client=mcp_client)
               tools.extend(await mcp_tool.to_tool_list_async())
             except Exception as e:
-              print(f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}")
+              endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
+              print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
 
         # Enhance agent instructions to prevent looping
         base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
@@ -187,11 +214,51 @@ data:
         )
         return VectorStoreIndex.from_vector_store(vector_store)
 
-      def _resolve_function(self, fn_name: str):
-        """Resolve function names to actual callables."""
-        if fn_name == "web_search":
-          return self._web_search
-        raise ValueError(f"Unknown function {fn_name}")
+      def _call_external_api(self, tool_spec: Dict[str, Any], query: str) -> str:
+        """Call an external API endpoint with authentication.
+
+        This function makes HTTP POST requests to external APIs with Bearer token authentication.
+        It's used by function tools and subWorkflow tools to integrate with external services.
+        The LLM will format the query parameter based on the tool's description.
+
+        Args:
+            tool_spec: Tool specification containing apiUrl, apiKey, and name
+            query: The query from the LLM - can be a JSON string or plain text
+
+        Returns:
+            The response text from the API, or an error message if the call fails
+        """
+        api_url = tool_spec.get("apiUrl")
+        api_key = tool_spec.get("apiKey")
+        tool_name = tool_spec.get("name", "api_function")
+
+        # Try to parse query as JSON, otherwise wrap it in a query field
+        try:
+          body = json.loads(query) if isinstance(query, str) else query
+        except (json.JSONDecodeError, TypeError):
+          body = {"query": query}
+
+        print(f"DEBUG: Calling {tool_name} at {api_url} with body: {json.dumps(body)[:200]}")
+
+        try:
+          headers = {"Content-Type": "application/json"}
+          if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+          response = requests.post(
+            api_url,
+            json=body,
+            headers=headers,
+            timeout=30
+          )
+          response.raise_for_status()
+          result = response.text if response.text else "Success: Request completed"
+          print(f"DEBUG: {tool_name} returned: {result[:200]}")
+          return result
+        except Exception as e:
+          error_msg = f"Error calling {tool_name}: {str(e)}"
+          print(f"DEBUG: {error_msg}")
+          return error_msg
 
       def _get_db_credentials(self, kb_config: Dict[str, Any]):
         """Get database credentials from Kubernetes secret."""
@@ -208,9 +275,6 @@ data:
           "port": int(base64.b64decode(secret.data["port"]).decode("utf-8")),
         }
 
-      def _web_search(self, query: str) -> str:
-        """Search the web for information."""
-        ...
 
       def _check_and_route(self, user_message: str, body: dict):
         """Check if question should be routed to another agent based on conditions.
@@ -300,8 +364,23 @@ data:
           print(f"WARNING: LLM returned unknown agent: {evaluation}")
           return False, None
 
-        # Route to target agent
-        target_url = f"http://{target_agent}.{namespace}.svc.cluster.local:9099/v1/chat/completions"
+        # Get route configuration
+        route_config = None
+        for route in routes:
+          if route.get("agent", "").lower() == target_agent.lower():
+            route_config = route
+            break
+
+        # Determine target URL and headers
+        if route_config and route_config.get("apiUrl"):
+          target_url = route_config["apiUrl"]
+        else:
+          target_url = f"http://{target_agent}.{namespace}.svc.cluster.local:9099/v1/chat/completions"
+
+        headers = {"Content-Type": "application/json"}
+        if route_config and route_config.get("apiKey"):
+          headers["Authorization"] = f"Bearer {route_config['apiKey']}"
+
         print(f"DEBUG: Routing to {target_url} (chain: {new_chain})")
 
         try:
@@ -313,6 +392,7 @@ data:
               "stream": True,
               "x-routing-chain": new_chain
             },
+            headers=headers,
             stream=True,
             timeout=REQUEST_TIMEOUT
           )
@@ -415,9 +495,19 @@ data:
         else:
             # AgentWorkflow mode - has tools - needs async handling with per-session context
             async def get_agent_response():
+                from llama_index.core.agent.workflow import AgentInput, AgentStream, ToolCallResult, AgentOutput, ToolCall
+
                 ctx = self._get_or_create_agent_context(session_id)
-                handler = self.agent.run(user_message, ctx=ctx)
+                print(f"DEBUG: Running agent with message: {user_message}")
+                handler = self.agent.run(user_message, ctx=ctx, max_iterations=30)
+
+                # Stream events for debugging
+                async for event in handler.stream_events():
+                  if isinstance(event, AgentStream):
+                     print(event.delta, end="", flush=True)
+
                 final_result = await handler
+                print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")
                 return str(final_result)
 
             # Run async function and get response
