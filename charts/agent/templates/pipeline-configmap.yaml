@@ -9,6 +9,7 @@ data:
     llama-index
     llama-index-vector-stores-postgres
     llama-index-embeddings-openai-like
+    llama-index-embeddings-nvidia
     llama-index-llms-openai-like
     llama-index-tools-mcp
     opencv-python-headless
