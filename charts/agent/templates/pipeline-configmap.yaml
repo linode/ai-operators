@@ -123,7 +123,7 @@ data:
                 query_engine=query_engine,
                 name=f"{kb_name}_knowledge_base",
                 description=tool_spec.get("description", "Knowledge base search tool"),
-                return_direct=True,  # Immediately return tool output, stop reasoning loop
+                # Note: return_direct removed - agent should synthesize from all tool results
               )
               tools.append(tool)
               kb_tools.append((index, tool_spec))  # Store index and spec for chat engine
