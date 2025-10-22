@@ -159,7 +159,18 @@ data:
 
               # Create MCP client with auth headers if API key is provided
               if api_key:
-                mcp_client = BasicMCPClient(endpoint, headers={"Authorization": f"Bearer {api_key}"})
+                # Split apiKey by semicolon: first part is bearer token, second part (if present) is X-Linode-Token
+                key_parts = api_key.split(";", 1)
+                bearer_token = key_parts[0].strip()
+
+                headers = {"Authorization": f"Bearer {bearer_token}"}
+
+                # Add X-Linode-Token if a second part exists
+                if len(key_parts) > 1:
+                  linode_token = key_parts[1].strip()
+                  headers["X-Linode-Token"] = f"Bearer {linode_token}"
+
+                mcp_client = BasicMCPClient(endpoint, headers=headers)
               else:
                 mcp_client = BasicMCPClient(endpoint)
 
