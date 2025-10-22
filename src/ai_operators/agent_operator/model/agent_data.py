@@ -15,8 +15,8 @@ class AgentData:
     foundation_model_endpoint: str
     agent_instructions: str
     max_tokens: int
-    temperature: float = 0.7
-    top_p: float = 1.0
+    temperature: float
+    top_p: float
     # TODO make this strongly typed
     routes: List[Dict[str, Any]] = field(factory=list)
     tools: List[Dict[str, Any]] = field(factory=list)

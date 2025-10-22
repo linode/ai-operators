@@ -123,6 +123,7 @@ data:
                 query_engine=query_engine,
                 name=f"{kb_name}_knowledge_base",
                 description=tool_spec.get("description", "Knowledge base search tool"),
+                return_direct=True,  # Immediately return tool output, stop reasoning loop
               )
               tools.append(tool)
               kb_tools.append((index, tool_spec))  # Store index and spec for chat engine
@@ -183,14 +184,42 @@ data:
               print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
 
         # Enhance agent instructions to prevent looping
-        base_instructions = self.agent_config.get("agent_instructions", "You are a helpful AI assistant.")
+        base_instructions = self.agent_config.get("agent_instructions")
         agent_instructions = f"""{base_instructions}
 
-          IMPORTANT RULES:
-          - ONLY use tools when the user's question specifically requires information from the knowledge base
-          - For general questions, greetings, or questions you can answer directly, respond WITHOUT using any tools
-          - Use tools ending with _knowledge_base ONLY when the question asks about specific documentation, data, or domain knowledge
-          - Do not call tools multiple times - use them once and provide a final answer"""
+          CRITICAL RULES - YOU MUST FOLLOW THESE:
+
+          1. YOU ARE TALKING TO A USER, NOT TO TOOLS
+             - The user is a real person asking you questions
+             - Tools are information sources, NOT conversation partners
+             - NEVER ask questions to tools - only query them for information
+             - DO NOT treat tool responses as if they are the user
+
+          2. FOR GREETINGS (hi, hello, hey):
+             - Respond directly: "Hello! How can I help you today?"
+             - DO NOT use any tools for greetings
+             - DO NOT search the knowledge base for "hello"
+
+          3. TOOL USAGE:
+             - Use tools ONLY to retrieve specific information the user needs
+             - Call each tool MAXIMUM ONCE per user message
+             - After getting tool results, IMMEDIATELY answer the user
+             - DO NOT call tools with follow-up questions
+             - DO NOT call tools to "clarify" things
+             - DO NOT call tools with your own questions
+
+          4. WHEN YOU HAVE AN ANSWER:
+             - STOP and respond to the user
+             - DO NOT call more tools
+             - DO NOT ask yourself more questions
+             - DO NOT try to get more context
+
+          5. IF TOOL RETURNS NO USEFUL INFO:
+             - Tell the user you don't have that information
+             - STOP - do not retry or call other tools
+
+          REMEMBER: You are answering the USER's question, not having a conversation with tools.
+          """
 
         if not tools:
           # No tools - just use LLM directly
@@ -520,12 +549,16 @@ data:
 
                 ctx = self._get_or_create_agent_context(session_id)
                 print(f"DEBUG: Running agent with message: {user_message}")
-                handler = self.agent.run(user_message, ctx=ctx, max_iterations=30)
+                handler = self.agent.run(user_message, ctx=ctx, max_iterations=5)
 
                 # Stream events for debugging
                 async for event in handler.stream_events():
                   if isinstance(event, AgentStream):
                      print(event.delta, end="", flush=True)
+                  # if isinstance(event, ToolCall):
+                  #   print(f"\n🔨 Calling: {event.tool_name}({event.tool_kwargs})")
+                  # elif isinstance(event, ToolCallResult):
+                  #  print(f"\n✅ Result: {event.tool_name} -> {str(event.tool_output)}")
 
                 final_result = await handler
                 print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")

@@ -10,9 +10,9 @@ class AkamaiAgent:
     foundation_model: str
     foundation_model_endpoint: str
     agent_instructions: str
-    max_tokens: int = 512
-    temperature: float = 0.7
-    top_p: float = 1.0
+    max_tokens: int
+    temperature: float
+    top_p: float
     # TODO make this strongly typed
     routes: List[Dict[str, Any]] = field(factory=list)
     tools: List[Dict[str, Any]] = field(factory=list)
