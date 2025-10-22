@@ -546,23 +546,31 @@ data:
             # AgentWorkflow mode - has tools - needs async handling with per-session context
             async def get_agent_response():
                 from llama_index.core.agent.workflow import AgentInput, AgentStream, ToolCallResult, AgentOutput, ToolCall
+                from llama_index.core.workflow.errors import WorkflowRuntimeError
 
-                ctx = self._get_or_create_agent_context(session_id)
-                print(f"DEBUG: Running agent with message: {user_message}")
-                handler = self.agent.run(user_message, ctx=ctx, max_iterations=5)
+                try:
+                    ctx = self._get_or_create_agent_context(session_id)
+                    print(f"DEBUG: Running agent with message: {user_message}")
+                    handler = self.agent.run(user_message, ctx=ctx, max_iterations=20)
 
-                # Stream events for debugging
-                async for event in handler.stream_events():
-                  if isinstance(event, AgentStream):
-                     print(event.delta, end="", flush=True)
-                  # if isinstance(event, ToolCall):
-                  #   print(f"\n🔨 Calling: {event.tool_name}({event.tool_kwargs})")
-                  # elif isinstance(event, ToolCallResult):
-                  #  print(f"\n✅ Result: {event.tool_name} -> {str(event.tool_output)}")
+                    # Stream events for debugging
+                    async for event in handler.stream_events():
+                      if isinstance(event, AgentStream):
+                         print(event.delta, end="", flush=True)
+                      # if isinstance(event, ToolCall):
+                      #   print(f"\n🔨 Calling: {event.tool_name}({event.tool_kwargs})")
+                      # elif isinstance(event, ToolCallResult):
+                      #  print(f"\n✅ Result: {event.tool_name} -> {str(event.tool_output)}")
 
-                final_result = await handler
-                print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")
-                return str(final_result)
+                    final_result = await handler
+                    print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")
+                    return str(final_result)
+                except WorkflowRuntimeError as e:
+                    if "Max iterations" in str(e):
+                        print(f"\nDEBUG: Max iterations reached")
+                        return "I apologize, but I'm having trouble processing your request. I've reached my reasoning limit. Could you please rephrase your question or be more specific about what you'd like to know?"
+                    else:
+                        raise
 
             # Run async function and get response
             result = anyio.from_thread.run(get_agent_response)
