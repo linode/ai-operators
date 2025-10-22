@@ -29,6 +29,7 @@ data:
     from llama_index.core.llms import ChatMessage
     from llama_index.core.chat_engine import SimpleChatEngine
     from llama_index.llms.openai_like import OpenAILike
+    from llama_index.embeddings.nvidia import NVIDIAEmbedding
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
     from llama_index.vector_stores.postgres import PGVectorStore
     from kubernetes import client, config as k8s_config
