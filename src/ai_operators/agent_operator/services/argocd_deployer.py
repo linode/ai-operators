@@ -70,17 +70,10 @@ class ArgoCDDeployer:
                 plural=ARGOCD_API_ARGS["plural"],
                 body=application,
             )
-
-            self.logger.info(
-                f"Created ArgoCD application {app_name} for agent {agent_data.name}"
-            )
             return app_name
 
         except ApiException as e:
             if e.status == 409:
-                self.logger.info(
-                    f"ArgoCD application {app_name} already exists, updating..."
-                )
                 return await self.update_agent(agent_data)
             else:
                 self.logger.error(
@@ -107,10 +100,6 @@ class ArgoCDDeployer:
                 name=app_name,
                 body=patch_body,
             )
-
-            self.logger.info(
-                f"Updated ArgoCD application {app_name} for agent {agent_data.name}"
-            )
             return app_name
 
         except ApiException as e:
@@ -130,16 +119,8 @@ class ArgoCDDeployer:
                 name=app_name,
             )
 
-            self.logger.info(
-                f"Deleted ArgoCD application {app_name} for agent {agent_data.name}"
-            )
-
         except ApiException as e:
-            if e.status == 404:
-                self.logger.warning(
-                    f"ArgoCD application {app_name} not found (already deleted)"
-                )
-            else:
+            if e.status != 404:
                 self.logger.error(
                     f"Failed to delete ArgoCD application {app_name}: {e}"
                 )

@@ -17,9 +17,22 @@ def create_helm_values(agent_data: AgentData) -> Dict[str, Any]:
     """Create Helm values for agent chart deployment."""
     agent_config = AgentConfig.from_agent_data(agent_data)
 
+    # Extract unique secret names from knowledge base tools
+    allowed_secrets = set()
+    for tool in agent_data.tools:
+        if tool.get("type") == "knowledgeBase" and tool.get("config"):
+            secret_name = tool["config"].get("secret_name")
+            if secret_name:
+                allowed_secrets.add(secret_name)
+
     values = {
         "nameOverride": agent_data.name,
         "agentConfig": json.dumps(agent_config.to_dict(), indent=2),
+        "serviceAccount": {
+            "allowedSecrets": sorted(
+                allowed_secrets
+            )  # Sorted list of unique secret names
+        },
     }
 
     return values

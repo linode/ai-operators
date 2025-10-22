@@ -28,6 +28,43 @@ resources:
   limits:
     cpu: "1"
     memory: 1Gi
+
+# -- Configure startup probe for slow-starting containers
+# The / endpoint returns {"status": true} immediately without loading pipelines
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+startupProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 30  # 15s + (30 * 10s) = 315s max startup time
+
+# -- Configure liveness probe to detect and restart unresponsive containers
+# Only checks if the FastAPI app is responsive, not if pipelines are loaded
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 0  # startup probe handles initial delay
+  periodSeconds: 30
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3  # Will restart after 90s of failures
+
+# -- Configure readiness probe to control traffic routing
+# Uses /models endpoint which verifies pipelines are actually loaded
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 0  # startup probe handles initial delay
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 6  # Allows up to 60s for pipelines to load after app starts
 ingress:
   enabled: false
 persistence:
@@ -44,6 +81,12 @@ persistence:
 serviceAccount:
   enable: true
   automountServiceAccountToken: true
+  # -- List of secret names that the agent can access
+  # Add secret names here that contain credentials needed by the agent
+  allowedSecrets: []
+  # allowedSecrets:
+  # - pgvector-cluster-app
+  # - openai-api-key
 
 # -- Configure pod security context
 # ref: <https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container>

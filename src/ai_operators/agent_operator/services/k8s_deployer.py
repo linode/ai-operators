@@ -76,11 +76,6 @@ class K8sDeployer:
 
     async def create_agent(self, agent_data: AgentData) -> str:
         """Deploy agent using Helm chart templating and kubectl apply."""
-
-        self.logger.info(
-            f"Deploying agent {agent_data.name} to namespace {agent_data.namespace}"
-        )
-
         values = create_helm_values(agent_data)
         manifest_dir = template_agent_chart(
             agent_name=agent_data.name,
@@ -90,8 +85,6 @@ class K8sDeployer:
         )
 
         self._apply_manifest_dir(manifest_dir, agent_data.namespace)
-
-        self.logger.info(f"Successfully deployed agent {agent_data.name}")
         return agent_data.name
 
     async def update_agent(self, agent_data: AgentData) -> str:
@@ -105,10 +98,6 @@ class K8sDeployer:
 
         # If manifest doesn't exist, template it first
         if not os.path.exists(manifest_dir):
-            self.logger.info(
-                f"Manifest directory not found for agent {agent_data.name}, templating chart for deletion"
-            )
-
             values = create_helm_values(agent_data)
             manifest_dir = template_agent_chart(
                 agent_name=agent_data.name,
@@ -117,13 +106,7 @@ class K8sDeployer:
                 output_dir=self.manifest_dir,
             )
 
-        self.logger.info(
-            f"Deleting agent {agent_data.name} from namespace {agent_data.namespace}"
-        )
-
         self._delete_manifest_dir(manifest_dir, agent_data.namespace)
-
-        self.logger.info(f"Successfully deleted agent {agent_data.name}")
 
     # TODO make this strongly typed
     async def get_deployment_status(

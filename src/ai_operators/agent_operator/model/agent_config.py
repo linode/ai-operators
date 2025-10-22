@@ -27,6 +27,8 @@ class AgentConfig:
     foundation_model: FoundationModelConfig
     agent_instructions: str
     max_tokens: int
+    temperature: float
+    top_p: float
     routes: List[Dict[str, Any]]
     tools: List[Dict[str, Any]]
 
@@ -50,6 +52,8 @@ class AgentConfig:
             ),
             agent_instructions=agent_data.agent_instructions,
             max_tokens=agent_data.max_tokens,
+            temperature=agent_data.temperature,
+            top_p=agent_data.top_p,
             routes=agent_data.routes,
             tools=sanitized_tools,
         )
@@ -62,6 +66,8 @@ class AgentConfig:
             "foundation_model": self.foundation_model.to_dict(),
             "agent_instructions": self.agent_instructions,
             "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
             "routes": self.routes,
             "tools": self.tools,
         }

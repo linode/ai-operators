@@ -70,6 +70,8 @@ data:
           model=self.agent_config["foundation_model"]["name"],
           api_base=f"{self.agent_config['foundation_model']['endpoint']}",
           max_tokens=self.agent_config.get("max_tokens", 512),
+          temperature=self.agent_config.get("temperature", 0.7),
+          top_p=self.agent_config.get("top_p", 1.0),
           is_chat_model=True,
           timeout=120.0,
           max_retries=2,
@@ -86,13 +88,19 @@ data:
             embedding_api_base = kb_config.get("embedding_api_base")
 
             if embedding_model and embedding_api_base:
-              Settings.embed_model = OpenAILikeEmbedding(
-                model_name=embedding_model,
-                api_base=embedding_api_base,
-                embed_batch_size=kb_config.get("embed_batch_size", 10),
-                max_retries=3,
-                timeout=180.0,
+              Settings.embed_model = NVIDIAEmbedding(
+                  model=embedding_model,
+                  base_url=embedding_api_base,
+                  truncate="END",
               )
+              #TODO don't remove this
+              # Settings.embed_model = OpenAILikeEmbedding(
+              #  model_name=embedding_model,
+              #  api_base=embedding_api_base,
+              #  embed_batch_size=kb_config.get("embed_batch_size", 10),
+              #  max_retries=3,
+              #  timeout=180.0,
+              # )
               break  # Only set once from first KB
 
         # Dynamically build tools from config

@@ -52,7 +52,18 @@ spec:
                 type: integer
                 default: 512
                 minimum: 1
-                maximum: 2048
+              temperature:
+                description: Controls randomness in model responses (0.0 = deterministic, 1.0 = creative)
+                type: number
+                default: 0.7
+                minimum: 0.0
+                maximum: 2.0
+              topP:
+                description: Nucleus sampling - limits token selection to top cumulative probability (0.1 = focused, 1.0 = all tokens)
+                type: number
+                default: 1.0
+                minimum: 0.0
+                maximum: 1.0
               routes:
                 description: Routes to other agents for conditional delegation
                 type: array
@@ -110,7 +121,7 @@ spec:
             x-kubernetes-preserve-unknown-fields: true
             properties:
               phase:
-                description: Current phase of the agent (Deployed, Failed)
+                description: Current phase of the agent (Deployed, Failed, Running)
                 type: string
               conditions:
                 description: Current conditions of the agent
@@ -127,6 +138,7 @@ spec:
                       type: string
                       enum:
                       - AgentDeployed
+                      - AgentReady
                       - AgentFailed
                     status:
                       description: Status of the condition

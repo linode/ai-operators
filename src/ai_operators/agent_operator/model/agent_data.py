@@ -15,14 +15,44 @@ class AgentData:
     foundation_model_endpoint: str
     agent_instructions: str
     max_tokens: int
+    temperature: float = 0.7
+    top_p: float = 1.0
     # TODO make this strongly typed
     routes: List[Dict[str, Any]] = field(factory=list)
     tools: List[Dict[str, Any]] = field(factory=list)
 
+    @staticmethod
+    def for_deletion(namespace: str, name: str, agent: AkamaiAgent) -> "AgentData":
+        return AgentData(
+            namespace=namespace,
+            name=name,
+            foundation_model=agent.foundation_model,
+            foundation_model_endpoint="",  # Not needed for deletion
+            agent_instructions=agent.agent_instructions,
+            max_tokens=agent.max_tokens,
+            temperature=agent.temperature,
+            top_p=agent.top_p,
+            routes=[],
+            tools=[],
+        )
+
+    @staticmethod
+    def for_status_check(namespace: str, name: str) -> "AgentData":
+        return AgentData(
+            namespace=namespace,
+            name=name,
+            foundation_model="",
+            foundation_model_endpoint="",
+            agent_instructions="",
+            max_tokens=0,
+            temperature=0.0,
+            top_p=0.0,
+            routes=[],
+            tools=[],
+        )
+
 
 async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> AgentData:
-    """Create AgentData from AkamaiAgent resource."""
-
     tools = []
     for tool in agent.tools:
         tool_copy = tool.copy()
@@ -42,6 +72,8 @@ async def create_agent_data(namespace: str, name: str, agent: AkamaiAgent) -> Ag
         foundation_model_endpoint=agent.foundation_model_endpoint,
         agent_instructions=agent.agent_instructions,
         max_tokens=agent.max_tokens,
+        temperature=agent.temperature,
+        top_p=agent.top_p,
         routes=agent.routes.copy(),
         tools=tools,
     )
