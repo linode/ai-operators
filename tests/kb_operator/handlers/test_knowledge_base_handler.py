@@ -56,7 +56,32 @@ async def test_created_success(handler_with_mock_service):
 
     result = await handler.created("test-namespace", "test-kb", SAMPLE_KB_OBJECT)
 
-    assert result == "created-run-id"
+    expected = (
+        "created-run-id",
+        {
+            "conditions": [
+                {
+                    "message": (
+                        "Indexing pipeline started for knowledge base "
+                        "test-kb. Run ID: created-run-id"
+                    ),
+                    "reason": "Scheduled",
+                    "status": "True",
+                    "type": "IndexingStarted",
+                }
+            ],
+            "phase": "Indexing",
+        },
+    )
+
+    result_id, result_data = result
+
+    # Remove timestamp fields
+    for cond in result_data["conditions"]:
+        cond.pop("lastTransitionTime", None)
+        cond.pop("lastUpdateTime", None)
+
+    assert (result_id, result_data) == expected
     mock_service.run_pipeline.assert_called_once_with(
         "test-namespace", "test-kb", SAMPLE_KB_OBJECT
     )
@@ -76,7 +101,32 @@ async def test_updated_success(handler_with_mock_service):
 
     result = await handler.updated("test-namespace", "test-kb", SAMPLE_KB_OBJECT)
 
-    assert result == "updated-run-id"
+    expected = (
+        "updated-run-id",
+        {
+            "conditions": [
+                {
+                    "message": (
+                        "Indexing pipeline started for knowledge base "
+                        "test-kb. Run ID: updated-run-id"
+                    ),
+                    "reason": "Scheduled",
+                    "status": "True",
+                    "type": "IndexingStarted",
+                }
+            ],
+            "phase": "Indexing",
+        },
+    )
+
+    result_id, result_data = result
+
+    # Remove timestamp fields
+    for cond in result_data["conditions"]:
+        cond.pop("lastTransitionTime", None)
+        cond.pop("lastUpdateTime", None)
+
+    assert (result_id, result_data) == expected
     mock_service.run_pipeline.assert_called_once_with(
         "test-namespace", "test-kb", SAMPLE_KB_OBJECT
     )
@@ -102,17 +152,34 @@ async def test_deleted(handler_with_mock_service):
 
 async def test_wait_for_completion_success(handler_with_mock_service):
     expected_result = {
-        "id": "test-run-id",
-        "details": {"status": "Succeeded"},
-        "created_at": "2024-01-01T12:00:00Z",
-        "finished_at": "2024-01-01T12:30:00Z",
+        "conditions": [
+            {
+                "message": "Indexing pipeline started for knowledge base test-kb",
+                "reason": "Scheduled",
+                "status": "True",
+                "type": "IndexingStarted",
+            },
+            {
+                "message": "Indexing pipeline completed successfully",
+                "reason": "Completed",
+                "status": "True",
+                "type": "IndexingFinished",
+            },
+        ],
+        "phase": "Indexed",
     }
+
     handler, mock_service = handler_with_mock_service
     mock_service.wait_for_pipeline_completion.return_value = expected_result
 
     result = await handler.wait_for_completion(
         "test-namespace", "test-kb", "test-run-id"
     )
+
+    # Remove timestamps from the actual result before comparing
+    for cond in result["conditions"]:
+        cond.pop("lastTransitionTime", None)
+        cond.pop("lastUpdateTime", None)
 
     assert result == expected_result
     mock_service.wait_for_pipeline_completion.assert_called_once_with("test-run-id")
@@ -155,8 +222,38 @@ async def test_created_and_updated_use_different_actions(handler_with_mock_servi
     result1 = await handler.created("test-namespace", "test-kb", SAMPLE_KB_OBJECT)
     result2 = await handler.updated("test-namespace", "test-kb", SAMPLE_KB_OBJECT)
 
-    assert result1 == "test-run-id"
-    assert result2 == "test-run-id"
+    expected = (
+        "test-run-id",
+        {
+            "conditions": [
+                {
+                    "message": (
+                        "Indexing pipeline started for knowledge base "
+                        "test-kb. Run ID: test-run-id"
+                    ),
+                    "reason": "Scheduled",
+                    "status": "True",
+                    "type": "IndexingStarted",
+                }
+            ],
+            "phase": "Indexing",
+        },
+    )
+
+    result_id1, result_data1 = result1
+    result_id2, result_data2 = result2
+
+    # Remove timestamp fields
+    for cond in result_data1["conditions"]:
+        cond.pop("lastTransitionTime", None)
+        cond.pop("lastUpdateTime", None)
+    # Remove timestamp fields
+    for cond in result_data2["conditions"]:
+        cond.pop("lastTransitionTime", None)
+        cond.pop("lastUpdateTime", None)
+
+    assert (result_id1, result_data1) == expected
+    assert (result_id2, result_data2) == expected
     assert mock_service.run_pipeline.call_count == 2
 
 
