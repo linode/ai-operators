@@ -34,12 +34,18 @@ data:
     from llama_index.embeddings.openai_like import OpenAILikeEmbedding
     from llama_index.vector_stores.postgres import PGVectorStore
     from kubernetes import client, config as k8s_config
+    from pydantic import BaseModel, Field
 
     # Configuration constants
     SIMILARITY_TOP_K = 3
     MAX_ROUTING_DEPTH = 3
     REQUEST_TIMEOUT = 120
     TYPING_DELAY = 0.01  # 10ms delay between characters
+
+    class SendEmailSchema(BaseModel):
+        subject: str = Field(..., description="Email subject line (required)")
+        description: str = Field(..., description="Detailed description of the issue (required)")
+        accountName: str = Field(..., description="Account name or username (required)")
 
     class Pipeline:
       def __init__(self):
@@ -153,11 +159,22 @@ data:
               continue
             # Use partial to bind tool_spec
             fn = partial(self._call_external_api, tool_spec)
-            tool = FunctionTool.from_defaults(
-              fn=fn,
-              name=f"{tool_spec.get('name')}",
-              description=tool_spec.get("description", "Workflow automation tool"),
-            )
+            name = tool_spec.get("name")
+
+            # hardcode schema for this specific tool
+            if name == "trigger-n8s-send-email-wf":
+                tool = FunctionTool.from_defaults(
+                    fn=fn,
+                    name=name,
+                    description=tool_spec.get("description", "Workflow automation tool"),
+                    fn_schema=SendEmailSchema,
+                )
+            else:
+                tool = FunctionTool.from_defaults(
+                    fn=fn,
+                    name=name,
+                    description=tool_spec.get("description", "Workflow automation tool"),
+                )
             tools.append(tool)
 
           elif tool_type == "mcpServer":
