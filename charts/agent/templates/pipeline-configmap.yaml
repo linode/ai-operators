@@ -202,7 +202,15 @@ data:
                       else:
                         fixed_kwargs[key] = value
                     print(f"DEBUG: {name} - Fixed kwargs: {fixed_kwargs}")
-                    return await orig_fn(**fixed_kwargs)
+                    try:
+                      result = await orig_fn(**fixed_kwargs)
+                      print(f"DEBUG: {name} - Success! Result type: {type(result)}")
+                      return result
+                    except Exception as e:
+                      print(f"DEBUG: {name} - MCP Error: {type(e).__name__}: {str(e)}")
+                      import traceback
+                      traceback.print_exc()
+                      raise
                   return wrapper
 
                 # Create new tool with wrapped function
