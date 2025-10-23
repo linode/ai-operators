@@ -223,7 +223,12 @@ data:
                     print(f"DEBUG: {name} - Fixed kwargs: {fixed_kwargs}")
 
                     try:
-                      result = await orig_fn(**fixed_kwargs)
+                      # Check if orig_fn is async or sync
+                      import inspect
+                      if inspect.iscoroutinefunction(orig_fn):
+                        result = await orig_fn(**fixed_kwargs)
+                      else:
+                        result = orig_fn(**fixed_kwargs)
                       print(f"DEBUG: {name} - Success! Result type: {type(result)}")
                       return result
                     except Exception as e:
