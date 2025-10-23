@@ -185,6 +185,7 @@ data:
               for mcp_tool_raw in mcp_tools_raw:
                 original_fn = mcp_tool_raw.fn
                 tool_name = mcp_tool_raw.metadata.name
+                tool_desc = mcp_tool_raw.metadata.description
 
                 def make_wrapper(orig_fn, name):
                   async def wrapper(**kwargs):
@@ -195,21 +196,29 @@ data:
                         # Parse JSON strings to objects
                         try:
                           fixed_kwargs[key] = json.loads(value)
+                          print(f"DEBUG: {name} - Parsed '{key}' from string to object")
                         except:
                           fixed_kwargs[key] = value
                       else:
                         fixed_kwargs[key] = value
-                    print(f"DEBUG: {name} - Original kwargs: {kwargs}")
                     print(f"DEBUG: {name} - Fixed kwargs: {fixed_kwargs}")
                     return await orig_fn(**fixed_kwargs)
                   return wrapper
 
-                # Replace the function
+                # Create new tool with wrapped function
                 wrapped_fn = make_wrapper(original_fn, tool_name)
-                mcp_tool_raw._fn = wrapped_fn
+                new_tool = FunctionTool.from_defaults(
+                  fn=wrapped_fn,
+                  async_fn=wrapped_fn,
+                  name=tool_name,
+                  description=tool_desc,
+                  fn_schema=mcp_tool_raw.metadata.fn_schema if hasattr(mcp_tool_raw.metadata, 'fn_schema') else None
+                )
+                tools.append(new_tool)
                 print(f"MCP Tool wrapped: {tool_name}")
 
-              tools.extend(mcp_tools_raw)
+              # Don't add original tools
+              # tools.extend(mcp_tools_raw)
             except Exception as e:
               endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
               print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
