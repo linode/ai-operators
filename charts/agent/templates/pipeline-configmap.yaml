@@ -192,12 +192,17 @@ data:
                     # Fix JSON string parameters - parse them to objects
                     fixed_kwargs = {}
                     for key, value in kwargs.items():
-                      if isinstance(value, str) and value.strip() in ['{}', '[]']:
-                        # Parse JSON strings to objects
-                        try:
-                          fixed_kwargs[key] = json.loads(value)
-                          print(f"DEBUG: {name} - Parsed '{key}' from string to object")
-                        except:
+                      if isinstance(value, str):
+                        stripped = value.strip()
+                        # Try to parse any string that looks like JSON (starts with { or [)
+                        if stripped.startswith('{') or stripped.startswith('['):
+                          try:
+                            fixed_kwargs[key] = json.loads(value)
+                            print(f"DEBUG: {name} - Parsed '{key}' from JSON string to object: {fixed_kwargs[key]}")
+                          except:
+                            # If parsing fails, keep as string
+                            fixed_kwargs[key] = value
+                        else:
                           fixed_kwargs[key] = value
                       else:
                         fixed_kwargs[key] = value
