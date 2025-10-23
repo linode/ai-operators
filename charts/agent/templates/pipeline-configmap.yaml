@@ -170,7 +170,7 @@ data:
                     fn=fn,
                     name=name,
                     description=tool_spec.get("description", "Workflow automation tool"),
-                    fn_schema=SendEmailSchema,
+                    fn_schema=SendEmailSchema.model_json_schema(),
                 )
             else:
                 tool = FunctionTool.from_defaults(
