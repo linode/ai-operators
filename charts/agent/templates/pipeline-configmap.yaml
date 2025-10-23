@@ -195,8 +195,12 @@ data:
                     for key, value in kwargs.items():
                       if isinstance(value, str):
                         stripped = value.strip()
+                        # Handle special case: string "null" should become empty object
+                        if stripped.lower() == 'null' or stripped.lower() == 'none':
+                          fixed_kwargs[key] = {}
+                          print(f"DEBUG: {name} - Converted '{key}' from null to empty object")
                         # Check if it looks like a JSON object or array
-                        if (stripped.startswith('{') and stripped.endswith('}')) or \
+                        elif (stripped.startswith('{') and stripped.endswith('}')) or \
                            (stripped.startswith('[') and stripped.endswith(']')):
                           try:
                             # Try standard JSON first (double quotes)
