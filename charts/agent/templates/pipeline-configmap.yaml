@@ -558,10 +558,10 @@ data:
                     async for event in handler.stream_events():
                       if isinstance(event, AgentStream):
                          print(event.delta, end="", flush=True)
-                      # if isinstance(event, ToolCall):
-                      #   print(f"\n🔨 Calling: {event.tool_name}({event.tool_kwargs})")
-                      # elif isinstance(event, ToolCallResult):
-                      #  print(f"\n✅ Result: {event.tool_name} -> {str(event.tool_output)}")
+                      if isinstance(event, ToolCall):
+                        print(f"\n🔨 Calling: {event.tool_name}({event.tool_kwargs})")
+                      elif isinstance(event, ToolCallResult):
+                       print(f"\n✅ Result: {event.tool_name} -> {str(event.tool_output)}")
 
                     final_result = await handler
                     print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")
