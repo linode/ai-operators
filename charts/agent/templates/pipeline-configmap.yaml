@@ -64,20 +64,26 @@ data:
         # Build agent from config
         await self._build_agent_from_config()
 
-      async def _build_agent_from_config(self):
-        # Load LLM from config
-        llm = OpenAILike(
-          model=self.agent_config["foundation_model"]["name"],
-          api_base=f"{self.agent_config['foundation_model']['endpoint']}",
-          max_tokens=self.agent_config.get("max_tokens", 512),
-          temperature=self.agent_config.get("temperature", 0.7),
-          top_p=self.agent_config.get("top_p", 1.0),
-          is_chat_model=True,
-          is_function_calling_model=True,  # Explicitly enable - confirmed via curl test
-          timeout=120.0,
-          max_retries=2,
-        )
+    async def _build_agent_from_config(self):
+        # Base required params
+        llm_kwargs = {
+            "model": self.agent_config["foundation_model"]["name"],
+            "api_base": self.agent_config["foundation_model"]["endpoint"],
+            "max_tokens": self.agent_config.get("max_tokens", 512),
+            "is_chat_model": True,
+            "is_function_calling_model": True,
+            "timeout": 120.0,
+            "max_retries": 2,
+        }
 
+        # Optional params
+        if "temperature" in self.agent_config:
+            llm_kwargs["temperature"] = self.agent_config["temperature"]
+        if "top_p" in self.agent_config:
+            llm_kwargs["top_p"] = self.agent_config["top_p"]
+
+        # Instantiate LLM
+        llm = OpenAILike(**llm_kwargs)
         Settings.llm = llm
 
         # Set up embedding model globally (assumes all KBs use the same embedding model)
@@ -186,6 +192,11 @@ data:
                 tool_desc = mcp_tool_raw.metadata.description
 
                 def make_wrapper(orig_fn, name):
+                  def snake_to_camel(snake_str):
+                    """Convert snake_case to camelCase."""
+                    components = snake_str.split('_')
+                    return components[0] + ''.join(x.title() for x in components[1:])
+
                   async def wrapper(**kwargs):
                     print(f"DEBUG: {name} - Received kwargs: {kwargs}")
 
@@ -292,6 +303,30 @@ data:
 
         # Create system prompt optimized for function calling
         base_instructions = self.agent_config.get("agent_instructions")
+
+        # Add a strict schema reminder for tool calls
+        tool_call_reminder = (
+            "\n\n"
+            "IMPORTANT:\n"
+            "When calling tools or functions, you must always include the 'arguments' field "
+            "inside the 'function' object, formatted as a valid JSON object.\n"
+            "- Example:\n"
+            "  {\n"
+            '    "tool_calls": [\n'
+            '      {\n'
+            '        "type": "function",\n'
+            '        "function": {\n'
+            '          "name": "get-linode-instances",\n'
+            '          "arguments": "{ \\"queryParams\\": {}, \\"pathParams\\": {} }"\n'
+            '        }\n'
+            '      }\n'
+            '    ]\n'
+            '  }\n'
+            "- If there are no parameters, use an empty object: 'arguments': '{}'.\n"
+            "- Never omit the 'arguments' field.\n"
+        )
+
+        full_instructions = f"{base_instructions.strip()}\n\n{tool_call_reminder.strip()}"
 
         if not tools:
           # No tools - just use LLM directly
