@@ -177,6 +177,7 @@ data:
                 mcp_client = BasicMCPClient(endpoint)
 
               mcp_tool = McpToolSpec(client=mcp_client)
+              print(f"DEBUG availble tools: {mcp_tool.list_tools()}")
               mcp_tools_raw = await mcp_tool.to_tool_list_async()
 
               # Wrap MCP tools to fix JSON string parameters
@@ -260,12 +261,30 @@ data:
 
                 # Create new tool with wrapped function
                 wrapped_fn = make_wrapper(original_fn, tool_name)
+
+                # Modify fn_schema to make queryParams and pathParams optional with defaults
+                fn_schema = None
+                if hasattr(mcp_tool_raw.metadata, 'fn_schema') and mcp_tool_raw.metadata.fn_schema:
+                  fn_schema = mcp_tool_raw.metadata.fn_schema.copy() if hasattr(mcp_tool_raw.metadata.fn_schema, 'copy') else mcp_tool_raw.metadata.fn_schema
+                  # Try to modify schema to make parameters optional
+                  if isinstance(fn_schema, dict) and 'parameters' in fn_schema:
+                    params = fn_schema['parameters']
+                    if isinstance(params, dict) and 'properties' in params:
+                      # Add default values to properties
+                      if 'queryParams' in params['properties']:
+                        params['properties']['queryParams']['default'] = {}
+                      if 'pathParams' in params['properties']:
+                        params['properties']['pathParams']['default'] = {'apiVersion': 'v4'}
+                      # Remove required fields for these parameters
+                      if 'required' in params and isinstance(params['required'], list):
+                        params['required'] = [r for r in params['required'] if r not in ['queryParams', 'pathParams']]
+
                 new_tool = FunctionTool.from_defaults(
                   fn=wrapped_fn,
                   async_fn=wrapped_fn,
                   name=tool_name,
                   description=tool_desc,
-                  fn_schema=mcp_tool_raw.metadata.fn_schema if hasattr(mcp_tool_raw.metadata, 'fn_schema') else None
+                  fn_schema=fn_schema
                 )
                 tools.append(new_tool)
                 print(f"MCP Tool wrapped: {tool_name}")
