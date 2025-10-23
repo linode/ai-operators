@@ -307,23 +307,37 @@ data:
         # Add a strict schema reminder for tool calls
         tool_call_reminder = (
             "\n\n"
-            "IMPORTANT:\n"
-            "When calling tools or functions, you must always include the 'arguments' field "
-            "inside the 'function' object, formatted as a valid JSON object.\n"
-            "- Example:\n"
-            "  {\n"
-            '    "tool_calls": [\n'
-            '      {\n'
-            '        "type": "function",\n'
-            '        "function": {\n'
-            '          "name": "get-linode-instances",\n'
-            '          "arguments": "{ \\"queryParams\\": {}, \\"pathParams\\": {} }"\n'
-            '        }\n'
-            '      }\n'
-            '    ]\n'
-            '  }\n'
-            "- If there are no parameters, use an empty object: 'arguments': '{}'.\n"
-            "- Never omit the 'arguments' field.\n"
+            "IMPORTANT TOOL CALLING RULES:\n"
+            "1️⃣ Always include the 'arguments' field inside every 'function' object.\n"
+            "   - Even if no parameters are required, include: 'arguments': '{}'\n"
+            "   - Never omit the 'arguments' field.\n"
+            "\n"
+            "2️⃣ Arguments must always be a valid JSON object (never plain text).\n"
+            "   Example:\n"
+            "   {\n"
+            '     "tool_calls": [\n'
+            '       {\n'
+            '         "type": "function",\n'
+            '         "function": {\n'
+            '           "name": "get-linode-instances",\n'
+            '           "arguments": "{ \\"queryParams\\": {}, \\"pathParams\\": {} }"\n'
+            '         }\n'
+            '       }\n'
+            '     ]\n'
+            '   }\n'
+            "\n"
+            "3️⃣ Before calling ANY tool, you must read its description carefully.\n"
+            "   - Include ALL required fields exactly as defined in the tool description.\n"
+            "   - Follow the data types and examples provided.\n"
+            "   - If unsure or missing required info, ask the user for clarification before calling.\n"
+            "\n"
+            "Example (tool 'trigger-n8s-send-email-wf'):\n"
+            "{\n"
+            '  "subject": "I have a problem with LKE",\n'
+            '  "description": "The cluster API is not responding",\n'
+            '  "accountName": "Cas Lubbers"\n'
+            "}\n"
+            "❌ Incorrect: {'query': '{'} or missing required fields.\n"
         )
 
         full_instructions = f"{base_instructions.strip()}\n\n{tool_call_reminder.strip()}"
@@ -349,7 +363,7 @@ data:
             tools,
             llm=llm,
             verbose=True,
-            system_prompt=base_instructions,
+            system_prompt=full_instructions,
             timeout=120.0,
           )
           # Don't create context here - create per session
