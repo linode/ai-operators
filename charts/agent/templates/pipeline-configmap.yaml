@@ -186,32 +186,6 @@ data:
 
         # Create system prompt optimized for function calling
         base_instructions = self.agent_config.get("agent_instructions")
-        agent_instructions = f"""{base_instructions}
-
-        CRITICAL INSTRUCTIONS FOR FUNCTION CALLING:
-
-        1. WHEN TO USE FUNCTIONS:
-           - Greetings (hi, hello, hey) → Answer directly, NO functions
-           - Simple questions you can answer → Answer directly, NO functions
-           - Questions needing specific data → Call the appropriate function ONCE
-
-        2. FUNCTION CALL RULES:
-           - Each function can be called MAXIMUM ONCE per user question
-           - ALWAYS provide the 'arguments' field, even if empty: {{"arguments": {{}}}}
-           - After receiving function results → IMMEDIATELY provide your final answer
-           - DO NOT call the same function multiple times
-           - DO NOT call functions to "clarify" or get "more details"
-
-        3. STOPPING BEHAVIOR:
-           - Once you have information from a function → STOP calling functions
-           - If function returns "You have X" → That IS the answer, respond immediately
-           - DO NOT retry functions that already gave you an answer
-           - DO NOT call additional functions after you have the answer
-
-        4. REMEMBER:
-           - You are answering a HUMAN USER, not talking to functions
-           - Functions are data sources, not conversation partners
-           - After any function returns results, your next response should be the FINAL ANSWER to the user"""
 
         if not tools:
           # No tools - just use LLM directly
