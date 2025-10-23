@@ -177,8 +177,6 @@ data:
                 mcp_client = BasicMCPClient(endpoint)
 
               mcp_tool = McpToolSpec(client=mcp_client)
-              print(f"DEBUG availble BasicMCPClient: {await mcp_client.list_tools()}")
-              print(f"DEBUG availble McpToolSpec: {await mcp_tool.fetch_tools()}")
               mcp_tools_raw = await mcp_tool.to_tool_list_async()
 
               # Wrap MCP tools to fix JSON string parameters
@@ -266,7 +264,19 @@ data:
                 # Modify fn_schema to make queryParams and pathParams optional with defaults
                 fn_schema = None
                 if hasattr(mcp_tool_raw.metadata, 'fn_schema') and mcp_tool_raw.metadata.fn_schema:
-                  fn_schema = mcp_tool_raw.metadata.fn_schema.copy() if hasattr(mcp_tool_raw.metadata.fn_schema, 'copy') else mcp_tool_raw.metadata.fn_schema
+                  # Convert Pydantic model to dict if needed
+                  if hasattr(mcp_tool_raw.metadata.fn_schema, 'model_dump'):
+                    # Pydantic v2
+                    fn_schema = mcp_tool_raw.metadata.fn_schema.model_dump()
+                  elif hasattr(mcp_tool_raw.metadata.fn_schema, 'dict'):
+                    # Pydantic v1
+                    fn_schema = mcp_tool_raw.metadata.fn_schema.dict()
+                  elif isinstance(mcp_tool_raw.metadata.fn_schema, dict):
+                    # Already a dict, make a copy
+                    fn_schema = mcp_tool_raw.metadata.fn_schema.copy()
+                  else:
+                    fn_schema = mcp_tool_raw.metadata.fn_schema
+
                   # Try to modify schema to make parameters optional
                   if isinstance(fn_schema, dict) and 'parameters' in fn_schema:
                     params = fn_schema['parameters']
