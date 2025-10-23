@@ -181,32 +181,15 @@ data:
               mcp_tool = McpToolSpec(client=mcp_client)
               mcp_tools_raw = await mcp_tool.to_tool_list_async()
 
-              # Wrap each MCP tool to catch and log exceptions properly
+              # Log tool schemas for debugging
               for mcp_tool_raw in mcp_tools_raw:
-                original_fn = mcp_tool_raw.fn
-                tool_name = mcp_tool_raw.metadata.name
+                print(f"\nMCP Tool: {mcp_tool_raw.metadata.name}")
+                print(f"Description: {mcp_tool_raw.metadata.description}")
+                if hasattr(mcp_tool_raw.metadata, 'fn_schema'):
+                  print(f"Schema: {mcp_tool_raw.metadata.fn_schema}")
 
-                async def wrapped_mcp_fn(*args, original=original_fn, name=tool_name, **kwargs):
-                  """Wrapper to catch and log MCP tool exceptions."""
-                  try:
-                    return await original(*args, **kwargs)
-                  except Exception as e:
-                    import traceback
-                    error_detail = traceback.format_exc()
-                    print(f"\nERROR in MCP tool '{name}':")
-                    print(f"Exception type: {type(e).__name__}")
-                    print(f"Exception message: {str(e)}")
-                    print(f"Full traceback:\n{error_detail}")
-                    raise
-
-                # Create new tool with wrapped function
-                wrapped_tool = FunctionTool.from_defaults(
-                  fn=wrapped_mcp_fn,
-                  name=tool_name,
-                  description=mcp_tool_raw.metadata.description,
-                  async_fn=wrapped_mcp_fn,
-                )
-                tools.append(wrapped_tool)
+              # Add MCP tools directly without wrapping to preserve parameter schema
+              tools.extend(mcp_tools_raw)
             except Exception as e:
               endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
               print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
