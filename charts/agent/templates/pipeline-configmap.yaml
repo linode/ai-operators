@@ -238,6 +238,15 @@ data:
                         fixed_kwargs['pathParams']['apiVersion'] = 'v4'
                         print(f"DEBUG: {name} - Auto-added apiVersion='v4' to existing pathParams")
 
+                      # Fix snake_case to camelCase for common Linode API params
+                      if 'linode_id' in fixed_kwargs['pathParams']:
+                        linode_id_value = fixed_kwargs['pathParams'].pop('linode_id')
+                        # Ensure it's an integer
+                        if isinstance(linode_id_value, str):
+                          linode_id_value = int(linode_id_value)
+                        fixed_kwargs['pathParams']['linodeId'] = linode_id_value
+                        print(f"DEBUG: {name} - Renamed linode_id to linodeId and converted to int: {linode_id_value}")
+
                     print(f"DEBUG: {name} - Final kwargs: {fixed_kwargs}")
 
                     try:
@@ -260,6 +269,10 @@ data:
 
                 # Create new tool with wrapped function
                 wrapped_fn = make_wrapper(original_fn, tool_name)
+
+                # Debug: Print the schema to understand what the LLM sees
+                if hasattr(mcp_tool_raw.metadata, 'fn_schema'):
+                  print(f"DEBUG: {tool_name} schema: {mcp_tool_raw.metadata.fn_schema}")
 
                 # Use the original metadata but with our wrapped function
                 new_tool = FunctionTool(
