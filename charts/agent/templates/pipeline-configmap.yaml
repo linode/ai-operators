@@ -75,6 +75,7 @@ data:
           temperature=self.agent_config.get("temperature", 0.7),
           top_p=self.agent_config.get("top_p", 1.0),
           is_chat_model=True,
+          is_function_calling_model=True,  # Explicitly enable - confirmed via curl test
           timeout=120.0,
           max_retries=2,
         )
