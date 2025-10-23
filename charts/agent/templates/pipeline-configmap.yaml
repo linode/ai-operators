@@ -261,12 +261,10 @@ data:
                 # Create new tool with wrapped function
                 wrapped_fn = make_wrapper(original_fn, tool_name)
 
-                # Use the original tool but don't pass fn_schema - let the wrapper handle defaults
-                new_tool = FunctionTool.from_defaults(
+                # Use the original metadata but with our wrapped function
+                new_tool = FunctionTool(
                   fn=wrapped_fn,
-                  async_fn=wrapped_fn,
-                  name=tool_name,
-                  description=tool_desc
+                  metadata=mcp_tool_raw.metadata
                 )
                 tools.append(new_tool)
                 print(f"MCP Tool wrapped: {tool_name}")
