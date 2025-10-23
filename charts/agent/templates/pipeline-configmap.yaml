@@ -49,10 +49,8 @@ data:
         self.agent = None
         self.ctx = None
         self.chat_engine = None
-        self.chat_engines = {}  # Store chat engines per session
-        self.agent_contexts = {}  # Store agent contexts per session
-        self.kb_index = None  # Store the KB index for creating new chat engines
-        self.simple_chat_engines = {}  # Store simple chat engines for LLM-only mode
+        self.kb_index = None  # Store the KB index for creating chat engines
+        self.system_prompt = None  # Store system prompt for LLM-only mode
 
       async def on_startup(self):
         # Load config from mounted ConfigMap
@@ -368,11 +366,27 @@ data:
         }
 
 
-      def _check_and_route(self, user_message: str, body: dict):
+      def _convert_to_chat_history(self, messages):
+        """Convert request messages to ChatMessage objects for chat history.
+
+        Args:
+          messages: List of message dicts with 'role' and 'content'
+
+        Returns:
+          List of ChatMessage objects excluding the last message (current message)
+        """
+        chat_history = []
+        if messages and len(messages) > 1:
+            for msg in messages[:-1]:  # Exclude current message
+                chat_history.append(ChatMessage(role=msg['role'], content=msg['content']))
+        return chat_history
+
+      def _check_and_route(self, user_message: str, messages: list, body: dict):
         """Check if question should be routed to another agent based on conditions.
 
         Args:
           user_message: The user's question
+          messages: List of all messages including history
           body: Request body containing routing chain
 
         Returns:
@@ -480,7 +494,7 @@ data:
             target_url,
             json={
               "model": "rag-pipeline",
-              "messages": [{"role": "user", "content": user_message}],
+              "messages": messages,  # Pass all messages including history
               "stream": True,
               "x-routing-chain": new_chain
             },
@@ -516,42 +530,12 @@ data:
           print(f"ERROR: Failed to route to {target_agent}: {e}")
           return False, None
 
-      def _get_or_create_chat_engine(self, session_id: str):
-        """Get or create a chat engine for a specific session."""
-        if session_id not in self.chat_engines:
-          self.chat_engines[session_id] = self.kb_index.as_chat_engine(
-            chat_mode="condense_plus_context",
-            streaming=True,
-            similarity_top_k=SIMILARITY_TOP_K,
-            system_prompt=self.system_prompt
-          )
-        return self.chat_engines[session_id]
-
-      def _get_or_create_agent_context(self, session_id: str):
-        """Get or create an agent context for a specific session."""
-        if session_id not in self.agent_contexts:
-          self.agent_contexts[session_id] = Context(self.agent)
-        return self.agent_contexts[session_id]
-
-      def _get_or_create_simple_chat_engine(self, session_id: str):
-        """Get or create a simple chat engine for LLM-only mode."""
-        if session_id not in self.simple_chat_engines:
-          self.simple_chat_engines[session_id] = SimpleChatEngine.from_defaults(
-            llm=self.agent,
-            system_prompt=self.system_prompt
-          )
-        return self.simple_chat_engines[session_id]
-
       def pipe(self, user_message, model_id, messages, body):
-        # Extract session ID from body or generate one
-        session_id = body.get("session_id", "default")
         print(f"DEBUG: body: {body}")
-        print(f"DEBUG: Session ID: {session_id}")
         print(f"DEBUG: Body keys: {body.keys()}")
-        print(f"DEBUG: Active sessions - chat_engines: {list(self.chat_engines.keys())}, simple_chat: {list(self.simple_chat_engines.keys())}, agent_contexts: {list(self.agent_contexts.keys())}")
 
         # Check if question should be routed to another agent
-        should_route, routed_response = self._check_and_route(user_message, body)
+        should_route, routed_response = self._check_and_route(user_message, messages, body)
         if should_route and routed_response:
           print("DEBUG: Routing to another agent")
           try:
@@ -565,35 +549,51 @@ data:
 
         # Check which mode: chat engine (single KB), LLM direct (no tools), or AgentWorkflow (multiple tools)
         if self.kb_index:
-            # Chat engine mode - single knowledge base - fast RAG with per-session context
+            # Chat engine mode - single knowledge base - fast RAG with stateless chat history
             try:
-                chat_engine = self._get_or_create_chat_engine(session_id)
-                streaming_response = chat_engine.stream_chat(user_message)
+                chat_history = self._convert_to_chat_history(messages)
+
+                # Create chat engine on-demand (stateless)
+                chat_engine = self.kb_index.as_chat_engine(
+                    chat_mode="simple",
+                    streaming=True,
+                    similarity_top_k=SIMILARITY_TOP_K,
+                    system_prompt=self.system_prompt if hasattr(self, 'system_prompt') else None
+                )
+                streaming_response = chat_engine.stream_chat(user_message, chat_history=chat_history)
                 # Yield tokens for streaming output
                 for token in streaming_response.response_gen:
                     yield token
             except Exception as e:
                 yield f"Error: {str(e)}"
         elif hasattr(self, 'system_prompt') and self.system_prompt and self.agent:
-            # LLM direct mode - no tools - use SimpleChatEngine with per-session history
+            # LLM direct mode - no tools - use SimpleChatEngine with stateless chat history
             try:
-                simple_chat = self._get_or_create_simple_chat_engine(session_id)
-                streaming_response = simple_chat.stream_chat(user_message)
+                chat_history = self._convert_to_chat_history(messages)
+
+                # Create SimpleChatEngine on-demand (stateless)
+                simple_chat = SimpleChatEngine.from_defaults(
+                    llm=self.agent,
+                    system_prompt=self.system_prompt
+                )
+                streaming_response = simple_chat.stream_chat(user_message, chat_history=chat_history)
                 # Stream tokens
                 for token in streaming_response.response_gen:
                     yield token
             except Exception as e:
                 yield f"Error: {str(e)}"
         else:
-            # AgentWorkflow mode - has tools - needs async handling with per-session context
+            # AgentWorkflow mode - has tools - needs async handling with stateless chat history
             async def get_agent_response():
                 from llama_index.core.agent.workflow import AgentInput, AgentStream, ToolCallResult, AgentOutput, ToolCall
                 from llama_index.core.workflow.errors import WorkflowRuntimeError
 
                 try:
-                    ctx = self._get_or_create_agent_context(session_id)
+                    chat_history = self._convert_to_chat_history(messages)
+
                     print(f"DEBUG: Running agent with message: {user_message}")
-                    handler = self.agent.run(user_message, ctx=ctx, max_iterations=20)
+                    print(f"DEBUG: Chat history length: {len(chat_history)}")
+                    handler = self.agent.run(user_message, chat_history=chat_history, max_iterations=20)
 
                     # Stream events for debugging
                     async for event in handler.stream_events():
@@ -612,11 +612,6 @@ data:
                     error_msg = str(e)
                     print(f"\nDEBUG: WorkflowRuntimeError: {error_msg}")
 
-                    # Clear context on error to prevent error loops
-                    if session_id in self.agent_contexts:
-                        print(f"DEBUG: Clearing context for session {session_id} due to error")
-                        del self.agent_contexts[session_id]
-
                     if "Max iterations" in error_msg:
                         return "I apologize, but I'm having trouble processing your request. I've reached my reasoning limit. Could you please rephrase your question or be more specific about what you'd like to know?"
                     elif "400" in error_msg or "BadRequestError" in error_msg:
@@ -625,12 +620,6 @@ data:
                         return f"I apologize, but I encountered an unexpected error: {error_msg[:200]}. Please try again or contact support if the issue persists."
                 except Exception as e:
                     print(f"\nDEBUG: Unexpected error: {type(e).__name__}: {str(e)}")
-
-                    # Clear context on error to prevent error loops
-                    if session_id in self.agent_contexts:
-                        print(f"DEBUG: Clearing context for session {session_id} due to error")
-                        del self.agent_contexts[session_id]
-
                     return "I apologize, but I encountered an unexpected error while processing your request. Please try again."
 
             # Run async function and get response
