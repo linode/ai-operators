@@ -222,12 +222,21 @@ data:
                       else:
                         fixed_kwargs[key] = value
 
-                    # Ensure pathParams has apiVersion if it's a Linode API call and pathParams exists
-                    if 'pathParams' in fixed_kwargs:
-                      if isinstance(fixed_kwargs['pathParams'], dict):
-                        if 'apiVersion' not in fixed_kwargs['pathParams']:
-                          fixed_kwargs['pathParams']['apiVersion'] = 'v4'
-                          print(f"DEBUG: {name} - Auto-added apiVersion='v4' to pathParams")
+                    # Ensure required parameters exist for Linode MCP tools
+                    # If queryParams is missing, add empty object
+                    if 'queryParams' not in fixed_kwargs:
+                      fixed_kwargs['queryParams'] = {}
+                      print(f"DEBUG: {name} - Auto-added empty queryParams")
+
+                    # If pathParams is missing, add with apiVersion
+                    if 'pathParams' not in fixed_kwargs:
+                      fixed_kwargs['pathParams'] = {'apiVersion': 'v4'}
+                      print(f"DEBUG: {name} - Auto-added pathParams with apiVersion='v4'")
+                    elif isinstance(fixed_kwargs['pathParams'], dict):
+                      # Ensure pathParams has apiVersion if it exists
+                      if 'apiVersion' not in fixed_kwargs['pathParams']:
+                        fixed_kwargs['pathParams']['apiVersion'] = 'v4'
+                        print(f"DEBUG: {name} - Auto-added apiVersion='v4' to existing pathParams")
 
                     print(f"DEBUG: {name} - Final kwargs: {fixed_kwargs}")
 
