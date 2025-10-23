@@ -184,9 +184,18 @@ data:
               # Log tool schemas for debugging
               for mcp_tool_raw in mcp_tools_raw:
                 print(f"\nMCP Tool: {mcp_tool_raw.metadata.name}")
-                print(f"Description: {mcp_tool_raw.metadata.description}")
+                print(f"Description: {mcp_tool_raw.metadata.description[:200]}...")
                 if hasattr(mcp_tool_raw.metadata, 'fn_schema'):
-                  print(f"Schema: {mcp_tool_raw.metadata.fn_schema}")
+                  schema = mcp_tool_raw.metadata.fn_schema
+                  print(f"Schema class: {schema}")
+                  if hasattr(schema, 'model_fields'):
+                    print(f"Parameters: {list(schema.model_fields.keys())}")
+                  # Try to get the JSON schema that will be sent to the LLM
+                  try:
+                    json_schema = schema.model_json_schema()
+                    print(f"JSON Schema: {json.dumps(json_schema, indent=2)[:500]}...")
+                  except:
+                    pass
 
               # Add MCP tools directly without wrapping to preserve parameter schema
               tools.extend(mcp_tools_raw)
@@ -548,6 +557,11 @@ data:
                     error_msg = str(e)
                     print(f"\nDEBUG: WorkflowRuntimeError: {error_msg}")
 
+                    # Clear context on error to prevent error loops
+                    if session_id in self.agent_contexts:
+                        print(f"DEBUG: Clearing context for session {session_id} due to error")
+                        del self.agent_contexts[session_id]
+
                     if "Max iterations" in error_msg:
                         return "I apologize, but I'm having trouble processing your request. I've reached my reasoning limit. Could you please rephrase your question or be more specific about what you'd like to know?"
                     elif "400" in error_msg or "BadRequestError" in error_msg:
@@ -556,6 +570,12 @@ data:
                         return f"I apologize, but I encountered an unexpected error: {error_msg[:200]}. Please try again or contact support if the issue persists."
                 except Exception as e:
                     print(f"\nDEBUG: Unexpected error: {type(e).__name__}: {str(e)}")
+
+                    # Clear context on error to prevent error loops
+                    if session_id in self.agent_contexts:
+                        print(f"DEBUG: Clearing context for session {session_id} due to error")
+                        del self.agent_contexts[session_id]
+
                     return "I apologize, but I encountered an unexpected error while processing your request. Please try again."
 
             # Run async function and get response
