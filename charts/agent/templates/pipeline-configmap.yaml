@@ -222,7 +222,14 @@ data:
                       else:
                         fixed_kwargs[key] = value
 
-                    print(f"DEBUG: {name} - Fixed kwargs: {fixed_kwargs}")
+                    # Ensure pathParams has apiVersion if it's a Linode API call and pathParams exists
+                    if 'pathParams' in fixed_kwargs:
+                      if isinstance(fixed_kwargs['pathParams'], dict):
+                        if 'apiVersion' not in fixed_kwargs['pathParams']:
+                          fixed_kwargs['pathParams']['apiVersion'] = 'v4'
+                          print(f"DEBUG: {name} - Auto-added apiVersion='v4' to pathParams")
+
+                    print(f"DEBUG: {name} - Final kwargs: {fixed_kwargs}")
 
                     try:
                       # Check if orig_fn is async or sync
