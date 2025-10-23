@@ -264,18 +264,25 @@ data:
                 # Modify fn_schema to make queryParams and pathParams optional with defaults
                 fn_schema = None
                 if hasattr(mcp_tool_raw.metadata, 'fn_schema') and mcp_tool_raw.metadata.fn_schema:
-                  # Convert Pydantic model to dict if needed
-                  if hasattr(mcp_tool_raw.metadata.fn_schema, 'model_dump'):
-                    # Pydantic v2
-                    fn_schema = mcp_tool_raw.metadata.fn_schema.model_dump()
-                  elif hasattr(mcp_tool_raw.metadata.fn_schema, 'dict'):
-                    # Pydantic v1
-                    fn_schema = mcp_tool_raw.metadata.fn_schema.dict()
-                  elif isinstance(mcp_tool_raw.metadata.fn_schema, dict):
-                    # Already a dict, make a copy
-                    fn_schema = mcp_tool_raw.metadata.fn_schema.copy()
+                  original_schema = mcp_tool_raw.metadata.fn_schema
+
+                  # Check if it's already a dict
+                  if isinstance(original_schema, dict):
+                    fn_schema = original_schema.copy()
                   else:
-                    fn_schema = mcp_tool_raw.metadata.fn_schema
+                    # Try to get the schema as a dict - it might be a Pydantic model or class
+                    try:
+                      # Try model_json_schema() for Pydantic models/classes
+                      if hasattr(original_schema, 'model_json_schema'):
+                        fn_schema = original_schema.model_json_schema()
+                      elif hasattr(original_schema, 'schema'):
+                        fn_schema = original_schema.schema()
+                      else:
+                        # Just use it as-is
+                        fn_schema = original_schema
+                    except Exception as e:
+                      print(f"DEBUG: Could not convert fn_schema to dict: {e}")
+                      fn_schema = original_schema
 
                   # Try to modify schema to make parameters optional
                   if isinstance(fn_schema, dict) and 'parameters' in fn_schema:
