@@ -189,10 +189,41 @@ data:
 
                 def make_wrapper(orig_fn, name):
                   async def wrapper(**kwargs):
-                    # Just log what we receive - no conversion
                     print(f"DEBUG: {name} - Received kwargs: {kwargs}")
+
+                    # Fix: Convert string representations of objects to actual objects
+                    # This is needed because LlamaIndex/LLM passes objects as strings
+                    fixed_kwargs = {}
+                    for key, value in kwargs.items():
+                      if isinstance(value, str):
+                        stripped = value.strip()
+                        # Check if it looks like a JSON object or array
+                        if (stripped.startswith('{') and stripped.endswith('}')) or \
+                           (stripped.startswith('[') and stripped.endswith(']')):
+                          try:
+                            # Try standard JSON first (double quotes)
+                            fixed_kwargs[key] = json.loads(value)
+                            print(f"DEBUG: {name} - Parsed '{key}' as JSON")
+                          except:
+                            try:
+                              # Fall back to eval for Python dict syntax (single quotes)
+                              # Using ast.literal_eval is safer than eval
+                              import ast
+                              fixed_kwargs[key] = ast.literal_eval(value)
+                              print(f"DEBUG: {name} - Parsed '{key}' as Python literal")
+                            except:
+                              # If both fail, keep as string
+                              fixed_kwargs[key] = value
+                              print(f"DEBUG: {name} - Could not parse '{key}', keeping as string")
+                        else:
+                          fixed_kwargs[key] = value
+                      else:
+                        fixed_kwargs[key] = value
+
+                    print(f"DEBUG: {name} - Fixed kwargs: {fixed_kwargs}")
+
                     try:
-                      result = await orig_fn(**kwargs)
+                      result = await orig_fn(**fixed_kwargs)
                       print(f"DEBUG: {name} - Success! Result type: {type(result)}")
                       return result
                     except Exception as e:
