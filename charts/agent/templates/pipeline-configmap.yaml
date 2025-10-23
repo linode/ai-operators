@@ -207,10 +207,12 @@ data:
                       print(f"DEBUG: {name} - Success! Result type: {type(result)}")
                       return result
                     except Exception as e:
-                      print(f"DEBUG: {name} - MCP Error: {type(e).__name__}: {str(e)}")
+                      error_msg = f"{type(e).__name__}: {str(e)}"
+                      print(f"DEBUG: {name} - MCP Error: {error_msg}")
                       import traceback
                       traceback.print_exc()
-                      raise
+                      # Return error as string so LLM can see it and retry with different parameters
+                      return f"Tool call failed: {error_msg}. Please check the required parameters and try again with valid values."
                   return wrapper
 
                 # Create new tool with wrapped function
