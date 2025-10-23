@@ -42,10 +42,13 @@ data:
     REQUEST_TIMEOUT = 120
     TYPING_DELAY = 0.01  # 10ms delay between characters
 
-    class SendEmailSchema(BaseModel):
+    class EmailQuery(BaseModel):
         subject: str = Field(..., description="Email subject line (required)")
         description: str = Field(..., description="Detailed description of the issue (required)")
         accountName: str = Field(..., description="Account name or username (required)")
+
+    class SendEmailSchema(BaseModel):
+        query: EmailQuery = Field(..., description="The query object for the email workflow")
 
     class Pipeline:
       def __init__(self):
@@ -348,13 +351,6 @@ data:
             "   - Follow the data types and examples provided.\n"
             "   - If unsure or missing required info, ask the user for clarification before calling.\n"
             "\n"
-            "Example (tool 'trigger-n8s-send-email-wf'):\n"
-            "{\n"
-            '  "subject": "I have a problem with LKE",\n'
-            '  "description": "The cluster API is not responding",\n'
-            '  "accountName": "Cas Lubbers"\n'
-            "}\n"
-            "❌ Incorrect: {'query': '{'} or missing required fields.\n"
         )
 
         full_instructions = f"{base_instructions.strip()}\n\n{tool_call_reminder.strip()}"
