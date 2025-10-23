@@ -184,43 +184,34 @@ data:
               endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
               print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
 
-        # Enhance agent instructions to prevent looping
+        # Create system prompt optimized for function calling
         base_instructions = self.agent_config.get("agent_instructions")
         agent_instructions = f"""{base_instructions}
 
-          CRITICAL RULES - YOU MUST FOLLOW THESE:
+        CRITICAL INSTRUCTIONS FOR FUNCTION CALLING:
 
-          1. YOU ARE TALKING TO A USER, NOT TO TOOLS
-             - The user is a real person asking you questions
-             - Tools are information sources, NOT conversation partners
-             - NEVER ask questions to tools - only query them for information
-             - DO NOT treat tool responses as if they are the user
+        1. WHEN TO USE FUNCTIONS:
+           - Greetings (hi, hello, hey) → Answer directly, NO functions
+           - Simple questions you can answer → Answer directly, NO functions
+           - Questions needing specific data → Call the appropriate function ONCE
 
-          2. FOR GREETINGS (hi, hello, hey):
-             - Respond directly: "Hello! How can I help you today?"
-             - DO NOT use any tools for greetings
-             - DO NOT search the knowledge base for "hello"
+        2. FUNCTION CALL RULES:
+           - Each function can be called MAXIMUM ONCE per user question
+           - ALWAYS provide the 'arguments' field, even if empty: {{"arguments": {{}}}}
+           - After receiving function results → IMMEDIATELY provide your final answer
+           - DO NOT call the same function multiple times
+           - DO NOT call functions to "clarify" or get "more details"
 
-          3. TOOL USAGE:
-             - Use tools ONLY to retrieve specific information the user needs
-             - Call each tool MAXIMUM ONCE per user message
-             - After getting tool results, IMMEDIATELY answer the user
-             - DO NOT call tools with follow-up questions
-             - DO NOT call tools to "clarify" things
-             - DO NOT call tools with your own questions
+        3. STOPPING BEHAVIOR:
+           - Once you have information from a function → STOP calling functions
+           - If function returns "You have X" → That IS the answer, respond immediately
+           - DO NOT retry functions that already gave you an answer
+           - DO NOT call additional functions after you have the answer
 
-          4. WHEN YOU HAVE AN ANSWER:
-             - STOP and respond to the user
-             - DO NOT call more tools
-             - DO NOT ask yourself more questions
-             - DO NOT try to get more context
-
-          5. IF TOOL RETURNS NO USEFUL INFO:
-             - Tell the user you don't have that information
-             - STOP - do not retry or call other tools
-
-          REMEMBER: You are answering the USER's question, not having a conversation with tools.
-          """
+        4. REMEMBER:
+           - You are answering a HUMAN USER, not talking to functions
+           - Functions are data sources, not conversation partners
+           - After any function returns results, your next response should be the FINAL ANSWER to the user"""
 
         if not tools:
           # No tools - just use LLM directly
@@ -243,7 +234,7 @@ data:
             tools,
             llm=llm,
             verbose=True,
-            system_prompt=agent_instructions,
+            system_prompt=base_instructions,
             timeout=120.0,
           )
           # Don't create context here - create per session
@@ -559,19 +550,26 @@ data:
                       if isinstance(event, AgentStream):
                          print(event.delta, end="", flush=True)
                       if isinstance(event, ToolCall):
-                        print(f"\n🔨 Calling: {event.tool_name}({event.tool_kwargs})")
+                        print(f"\n Calling: {event.tool_name}({event.tool_kwargs})")
                       elif isinstance(event, ToolCallResult):
-                       print(f"\n✅ Result: {event.tool_name} -> {str(event.tool_output)}")
+                       print(f"\n Result: {event.tool_name} -> {str(event.tool_output)}")
 
                     final_result = await handler
                     print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")
                     return str(final_result)
                 except WorkflowRuntimeError as e:
-                    if "Max iterations" in str(e):
-                        print(f"\nDEBUG: Max iterations reached")
+                    error_msg = str(e)
+                    print(f"\nDEBUG: WorkflowRuntimeError: {error_msg}")
+
+                    if "Max iterations" in error_msg:
                         return "I apologize, but I'm having trouble processing your request. I've reached my reasoning limit. Could you please rephrase your question or be more specific about what you'd like to know?"
+                    elif "400" in error_msg or "BadRequestError" in error_msg:
+                        return "I apologize, but I encountered an error while processing your request. This might be a temporary issue. Could you please try rephrasing your question?"
                     else:
-                        raise
+                        return f"I apologize, but I encountered an unexpected error: {error_msg[:200]}. Please try again or contact support if the issue persists."
+                except Exception as e:
+                    print(f"\nDEBUG: Unexpected error: {type(e).__name__}: {str(e)}")
+                    return "I apologize, but I encountered an unexpected error while processing your request. Please try again."
 
             # Run async function and get response
             result = anyio.from_thread.run(get_agent_response)
