@@ -64,10 +64,6 @@ spec:
                     type:
                       description: Type of condition
                       type: string
-                      enum:
-                      - IndexingStarted
-                      - IndexingFinished
-                      - IndexingFailed
                     status:
                       description: Status of the condition
                       type: string
@@ -78,12 +74,6 @@ spec:
                     reason:
                       description: Reason for the condition status
                       type: string
-                      enum:
-                      - Scheduled
-                      - Misconfiguration
-                      - DataSourceError
-                      - DatabaseError
-                      - ModelError
                     message:
                       description: Human readable message describing the condition
                       type: string

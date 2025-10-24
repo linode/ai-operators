@@ -1,10 +1,14 @@
+import logging
 import os
 from datetime import datetime
 from typing import Optional
 
 from kfp.client import Client
+from kfp_server_api.exceptions import ApiException
 
 from ..resource import AkamaiKnowledgeBase
+
+logger = logging.getLogger(__name__)
 
 
 class KubeflowPipelinesService:
@@ -55,13 +59,24 @@ class KubeflowPipelinesService:
         client = self._get_client()
         pipeline_id = client.get_pipeline_id(pipeline_name)
         if pipeline_id:
-            pipeline_version = self._get_client().upload_pipeline_version(
-                package_path,
-                version_name,
-                pipeline_id=pipeline_id,
-                description=description,
-            )
-            return pipeline_id, pipeline_version.pipeline_version_id
+            try:
+                pipeline_version = self._get_client().upload_pipeline_version(
+                    package_path,
+                    version_name,
+                    pipeline_id=pipeline_id,
+                    description=description,
+                )
+                return pipeline_id, pipeline_version.pipeline_version_id
+            except ApiException as e:
+                if e.status == 409:
+                    # Version already exists, log a warning and return existing pipeline info
+                    logger.warning(
+                        f"Pipeline version '{version_name}' already exists for pipeline '{pipeline_name}'. Skipping upload."
+                    )
+                    return pipeline_id, version_name
+                else:
+                    # Re-raise other API exceptions
+                    raise
         else:
             pipeline = self._get_client().upload_pipeline(
                 package_path,
