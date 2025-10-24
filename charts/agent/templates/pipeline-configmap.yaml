@@ -645,7 +645,7 @@ data:
 
                 # Create chat engine on-demand (stateless)
                 chat_engine = self.kb_index.as_chat_engine(
-                    chat_mode="condense_question",
+                    chat_mode="condense_plus_context",
                     streaming=True,
                     similarity_top_k=SIMILARITY_TOP_K,
                     system_prompt=self.system_prompt if hasattr(self, 'system_prompt') else None
