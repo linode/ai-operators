@@ -397,7 +397,7 @@ data:
         )
         return VectorStoreIndex.from_vector_store(vector_store)
 
-      def _call_external_api(self, tool_spec: Dict[str, Any], query: Dict[str, Any] = None) -> str:
+      def _call_external_api(self, tool_spec: Dict[str, Any], query: str) -> str:
         """Call an external API endpoint with authentication.
 
         This function makes HTTP POST requests to external APIs with Bearer token authentication.
@@ -415,8 +415,10 @@ data:
         api_key = tool_spec.get("apiKey")
         tool_name = tool_spec.get("name", "api_function")
 
-        # Use query as the body
-        body = query if query is not None else {}
+        try:
+          body = json.loads(query) if isinstance(query, str) else query
+        except (json.JSONDecodeError, TypeError):
+          body = {"query": query}
 
         print(f"DEBUG: Calling {tool_name} at {api_url} with body: {json.dumps(body)[:200]}")
 
