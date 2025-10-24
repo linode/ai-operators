@@ -74,6 +74,38 @@ data:
         await self._build_agent_from_config()
 
       async def _build_agent_from_config(self):
+        # Create system prompt optimized for function calling
+        base_instructions = self.agent_config.get("agent_instructions")
+
+        # Add a strict schema reminder for tool calls
+        tool_call_reminder = (
+            "\n\n"
+            "IMPORTANT TOOL CALLING RULES:\n"
+            " Always include the 'arguments' field inside every 'function' object.\n"
+            "   - Even if no parameters are required, include: 'arguments': '{}'\n"
+            "   - Never omit the 'arguments' field.\n"
+            "\n"
+            " Arguments must always be a valid JSON object (never plain text).\n"
+            "   Example:\n"
+            "   {\n"
+            '     "tool_calls": [\n'
+            '       {\n'
+            '         "type": "function",\n'
+            '         "function": {\n'
+            '           "name": "get-linode-instances",\n'
+            '           "arguments": "{ \\"queryParams\\": {}, \\"pathParams\\": {} }"\n'
+            '         }\n'
+            '       }\n'
+            '     ]\n'
+            '   }\n'
+            "\n"
+            " Before calling ANY tool, you must load in its schema.\n"
+            "   - Include ALL required fields exactly as defined in the tool schema.\n"
+            "   - If unsure or missing required info, ask the user for clarification before calling.\n"
+            "\n"
+        )
+
+        full_instructions = f"{base_instructions.strip()}\n\n{tool_call_reminder.strip()}"
         # Base required params
         llm_kwargs = {
             "model": self.agent_config["foundation_model"]["name"],
@@ -83,6 +115,7 @@ data:
             "is_function_calling_model": True,
             "timeout": 120.0,
             "max_retries": 2,
+            "system_prompt": tool_call_reminder,
         }
 
         # Optional params
@@ -320,39 +353,6 @@ data:
               print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
               import traceback
               traceback.print_exc()
-
-        # Create system prompt optimized for function calling
-        base_instructions = self.agent_config.get("agent_instructions")
-
-        # Add a strict schema reminder for tool calls
-        tool_call_reminder = (
-            "\n\n"
-            "IMPORTANT TOOL CALLING RULES:\n"
-            " Always include the 'arguments' field inside every 'function' object.\n"
-            "   - Even if no parameters are required, include: 'arguments': '{}'\n"
-            "   - Never omit the 'arguments' field.\n"
-            "\n"
-            " Arguments must always be a valid JSON object (never plain text).\n"
-            "   Example:\n"
-            "   {\n"
-            '     "tool_calls": [\n'
-            '       {\n'
-            '         "type": "function",\n'
-            '         "function": {\n'
-            '           "name": "get-linode-instances",\n'
-            '           "arguments": "{ \\"queryParams\\": {}, \\"pathParams\\": {} }"\n'
-            '         }\n'
-            '       }\n'
-            '     ]\n'
-            '   }\n'
-            "\n"
-            " Before calling ANY tool, you must load in its schema.\n"
-            "   - Include ALL required fields exactly as defined in the tool schema.\n"
-            "   - If unsure or missing required info, ask the user for clarification before calling.\n"
-            "\n"
-        )
-
-        full_instructions = f"{base_instructions.strip()}\n\n{tool_call_reminder.strip()}"
 
         if not tools:
           # No tools - just use LLM directly
