@@ -570,6 +570,9 @@ data:
         # Determine target URL and headers
         if route_config and route_config.get("apiUrl"):
           target_url = route_config["apiUrl"]
+          # Ensure URL ends with /chat/completions
+          if not target_url.endswith("/chat/completions"):
+            target_url = target_url.rstrip("/") + "/chat/completions"
         else:
           target_url = f"http://{target_agent}.{namespace}.svc.cluster.local:9099/v1/chat/completions"
 
