@@ -42,13 +42,13 @@ data:
     REQUEST_TIMEOUT = 120
     TYPING_DELAY = 0.01  # 10ms delay between characters
 
-    class EmailQueryParams(BaseModel):
+    class EmailQuery(BaseModel):
         subject: str = Field(..., description="Email subject line (required)")
         description: str = Field(..., description="Detailed description of the issue (required)")
         accountName: str = Field(..., description="Account name or username (required)")
 
     class SendEmailSchema(BaseModel):
-        queryParams: EmailQueryParams = Field(..., description="The query parameters for the email workflow")
+        query: EmailQuery = Field(..., description="The query parameters for the email workflow")
 
     class Pipeline:
       def __init__(self):
@@ -397,7 +397,7 @@ data:
         )
         return VectorStoreIndex.from_vector_store(vector_store)
 
-      def _call_external_api(self, tool_spec: Dict[str, Any], queryParams: Dict[str, Any] = None) -> str:
+      def _call_external_api(self, tool_spec: Dict[str, Any], query: Dict[str, Any] = None) -> str:
         """Call an external API endpoint with authentication.
 
         This function makes HTTP POST requests to external APIs with Bearer token authentication.
@@ -406,7 +406,7 @@ data:
 
         Args:
             tool_spec: Tool specification containing apiUrl, apiKey, and name
-            queryParams: The query parameters from the LLM (for tools with schema)
+            query: The query parameters from the LLM (for tools with schema)
 
         Returns:
             The response text from the API, or an error message if the call fails
@@ -415,8 +415,8 @@ data:
         api_key = tool_spec.get("apiKey")
         tool_name = tool_spec.get("name", "api_function")
 
-        # Use queryParams as the body
-        body = queryParams if queryParams is not None else {}
+        # Use query as the body
+        body = query if query is not None else {}
 
         print(f"DEBUG: Calling {tool_name} at {api_url} with body: {json.dumps(body)[:200]}")
 
