@@ -42,13 +42,10 @@ data:
     REQUEST_TIMEOUT = 120
     TYPING_DELAY = 0.01  # 10ms delay between characters
 
-    class EmailQuery(BaseModel):
+    class SendEmailSchema(BaseModel):
         subject: str = Field(..., description="Email subject line (required)")
         description: str = Field(..., description="Detailed description of the issue (required)")
         accountName: str = Field(..., description="Account name or username (required)")
-
-    class SendEmailSchema(BaseModel):
-        query: EmailQuery = Field(..., description="The query object for the email workflow")
 
     class Pipeline:
       def __init__(self):
@@ -328,11 +325,11 @@ data:
         tool_call_reminder = (
             "\n\n"
             "IMPORTANT TOOL CALLING RULES:\n"
-            "1️⃣ Always include the 'arguments' field inside every 'function' object.\n"
+            " Always include the 'arguments' field inside every 'function' object.\n"
             "   - Even if no parameters are required, include: 'arguments': '{}'\n"
             "   - Never omit the 'arguments' field.\n"
             "\n"
-            "2️⃣ Arguments must always be a valid JSON object (never plain text).\n"
+            " Arguments must always be a valid JSON object (never plain text).\n"
             "   Example:\n"
             "   {\n"
             '     "tool_calls": [\n'
@@ -346,9 +343,8 @@ data:
             '     ]\n'
             '   }\n'
             "\n"
-            "3️⃣ Before calling ANY tool, you must read its description carefully.\n"
-            "   - Include ALL required fields exactly as defined in the tool description.\n"
-            "   - Follow the data types and examples provided.\n"
+            " Before calling ANY tool, you must load in its schema.\n"
+            "   - Include ALL required fields exactly as defined in the tool schema.\n"
             "   - If unsure or missing required info, ask the user for clarification before calling.\n"
             "\n"
         )
@@ -398,16 +394,16 @@ data:
         )
         return VectorStoreIndex.from_vector_store(vector_store)
 
-      def _call_external_api(self, tool_spec: Dict[str, Any], query: str) -> str:
+      def _call_external_api(self, tool_spec: Dict[str, Any], **kwargs) -> str:
         """Call an external API endpoint with authentication.
 
         This function makes HTTP POST requests to external APIs with Bearer token authentication.
         It's used by function tools and subWorkflow tools to integrate with external services.
-        The LLM will format the query parameter based on the tool's description.
+        The LLM will pass parameters based on the tool's schema.
 
         Args:
             tool_spec: Tool specification containing apiUrl, apiKey, and name
-            query: The query from the LLM - can be a JSON string or plain text
+            **kwargs: The parameters from the LLM based on the tool's schema
 
         Returns:
             The response text from the API, or an error message if the call fails
@@ -416,11 +412,8 @@ data:
         api_key = tool_spec.get("apiKey")
         tool_name = tool_spec.get("name", "api_function")
 
-        # Try to parse query as JSON, otherwise wrap it in a query field
-        try:
-          body = json.loads(query) if isinstance(query, str) else query
-        except (json.JSONDecodeError, TypeError):
-          body = {"query": query}
+        # Use kwargs directly as the body
+        body = kwargs
 
         print(f"DEBUG: Calling {tool_name} at {api_url} with body: {json.dumps(body)[:200]}")
 
