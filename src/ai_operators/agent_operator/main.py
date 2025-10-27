@@ -51,14 +51,15 @@ async def created(spec, meta, logger, retry, patch, **_):
     logger.debug(f"Spec: {spec}")
 
     try:
-        await AGENT_HANDLER.created(
+        patch["status"] = await AGENT_HANDLER.created(
             meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
         )
 
         ready_status = await AGENT_HANDLER.wait_for_agent_ready(
             meta["namespace"], meta["name"]
         )
-        patch["status"] = ready_status
+        if ready_status is not None:
+            patch["status"] = ready_status
 
     except Exception as e:
         if retry >= MAX_RETRIES:
@@ -82,15 +83,15 @@ async def updated(spec, meta, old, new, diff, logger, retry, patch, **_):
     logger.debug(f"Diff: {diff}")
 
     try:
-        await AGENT_HANDLER.updated(
+        patch["status"] = await AGENT_HANDLER.updated(
             meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
         )
 
         ready_status = await AGENT_HANDLER.wait_for_agent_ready(
             meta["namespace"], meta["name"]
         )
-
-        patch["status"] = ready_status
+        if ready_status is not None:
+            patch["status"] = ready_status
 
     except Exception as e:
         if retry >= MAX_RETRIES:

@@ -100,11 +100,29 @@ class AgentHandler:
         - Checking existing deployments (e.g., during create when deployment already exists)
         - Waiting for newly created/updated deployments to become ready
         """
+        import asyncio
+
         agent_data = AgentData.for_status_check(namespace, name)
 
-        deployment_status = await self.agent_service.get_deployment_status(agent_data)
+        # Wait for deployment to exist (with timeout)
+        deployment_wait_timeout = 120  # seconds to wait for deployment to be created
+        deployment_poll_interval = 2  # seconds between checks
+        elapsed = 0
+        deployment_status = None
+
+        while elapsed < deployment_wait_timeout:
+            deployment_status = await self.agent_service.get_deployment_status(
+                agent_data
+            )
+            if deployment_status:
+                break
+            await asyncio.sleep(deployment_poll_interval)
+            elapsed += deployment_poll_interval
 
         if not deployment_status:
+            self.logger.warning(
+                f"Deployment {name} not found after {deployment_wait_timeout}s"
+            )
             return None
 
         self.logger.info(f"Waiting for agent {name} to become ready")
