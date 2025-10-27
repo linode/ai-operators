@@ -51,7 +51,7 @@ async def created(spec, meta, logger, retry, patch, **_):
     logger.debug(f"Spec: {spec}")
 
     try:
-        patch["status"] = await AGENT_HANDLER.created(
+        await AGENT_HANDLER.created(
             meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
         )
 
@@ -83,7 +83,7 @@ async def updated(spec, meta, old, new, diff, logger, retry, patch, **_):
     logger.debug(f"Diff: {diff}")
 
     try:
-        patch["status"] = await AGENT_HANDLER.updated(
+        await AGENT_HANDLER.updated(
             meta["namespace"], meta["name"], AkamaiAgent.from_spec(spec)
         )
 
