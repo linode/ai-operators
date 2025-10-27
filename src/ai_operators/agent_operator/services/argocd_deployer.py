@@ -70,17 +70,10 @@ class ArgoCDDeployer:
                 plural=ARGOCD_API_ARGS["plural"],
                 body=application,
             )
-
-            self.logger.info(
-                f"Created ArgoCD application {app_name} for agent {agent_data.name}"
-            )
             return app_name
 
         except ApiException as e:
             if e.status == 409:
-                self.logger.info(
-                    f"ArgoCD application {app_name} already exists, updating..."
-                )
                 return await self.update_agent(agent_data)
             else:
                 self.logger.error(
@@ -93,6 +86,11 @@ class ArgoCDDeployer:
         app_name = _get_app_name(agent_data)
         application = _create_argocd_application(agent_data)
 
+        # Create patch body with only the fields that can change
+        patch_body = {
+            "spec": application["spec"],
+        }
+
         try:
             await patch_custom_object(
                 group=ARGOCD_API_ARGS["group"],
@@ -100,11 +98,7 @@ class ArgoCDDeployer:
                 namespace=ARGOCD_API_ARGS["namespace"],
                 plural=ARGOCD_API_ARGS["plural"],
                 name=app_name,
-                body=application,
-            )
-
-            self.logger.info(
-                f"Updated ArgoCD application {app_name} for agent {agent_data.name}"
+                body=patch_body,
             )
             return app_name
 
@@ -125,16 +119,8 @@ class ArgoCDDeployer:
                 name=app_name,
             )
 
-            self.logger.info(
-                f"Deleted ArgoCD application {app_name} for agent {agent_data.name}"
-            )
-
         except ApiException as e:
-            if e.status == 404:
-                self.logger.warning(
-                    f"ArgoCD application {app_name} not found (already deleted)"
-                )
-            else:
+            if e.status != 404:
                 self.logger.error(
                     f"Failed to delete ArgoCD application {app_name}: {e}"
                 )

@@ -28,6 +28,7 @@ class PipelineRuntimeConfig:
 
 WATCHED_NAMESPACES = set()
 KB_HANDLER = KnowledgeBaseHandler()
+MAX_RETRIES = int(os.getenv("KB_MAX_RETRIES", "10"))
 PIPELINE_RUNTIME_CONFIG = PipelineRuntimeConfig(
     config_update_interval=30,
     source_update_interval=10,
@@ -104,27 +105,75 @@ async def shutdown_fn(logger, **_):
         PIPELINE_RUNTIME_CONFIG.source_update_task.cancel()
 
 
-@kopf.on.create(RESOURCE_NAME, when=matches_namespaces)
-async def created(spec, meta, logger, **_):
-    logger.info(f"Detected created resource {meta['name']}.")
+@kopf.on.create(RESOURCE_NAME, when=matches_namespaces, retries=MAX_RETRIES)
+async def created(spec, meta, logger, retry, patch, **_):
+    logger.info(
+        f"Detected created resource {meta['name']} (attempt {retry + 1}/{MAX_RETRIES + 1})."
+    )
     logger.debug(f"Spec: {spec}")
 
-    run_id = await KB_HANDLER.created(
-        meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
+    try:
+        # Start indexing pipeline and get "Indexing" status
+        run_id, status = await KB_HANDLER.created(
+            meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
+        )
+        patch["status"] = status
+
+        # Wait for pipeline to complete
+        final_status = await KB_HANDLER.wait_for_completion(
+            meta["namespace"], meta["name"], run_id
+        )
+        patch["status"] = final_status
+
+    except Exception as e:
+        if retry >= MAX_RETRIES:
+            # Last retry - mark as failed and don't re-raise
+            logger.error(
+                f"Knowledge base {meta['name']} failed after {retry + 1} retries: {e}"
+            )
+            patch["status"] = KB_HANDLER.mark_failed("IndexingError", str(e))
+        else:
+            # Not the last retry - re-raise to trigger retry
+            logger.warning(
+                f"Knowledge base {meta['name']} failed on attempt {retry + 1}, will retry: {e}"
+            )
+            raise
+
+
+@kopf.on.update(RESOURCE_NAME, when=matches_namespaces, retries=MAX_RETRIES)
+async def updated(spec, meta, old, new, diff, logger, retry, patch, **_):
+    logger.info(
+        f"Detected updated resource {meta['name']} (attempt {retry + 1}/{MAX_RETRIES + 1})."
     )
-    await KB_HANDLER.wait_for_completion(meta["namespace"], meta["name"], run_id)
-
-
-@kopf.on.update(RESOURCE_NAME, when=matches_namespaces)
-async def updated(spec, meta, old, new, diff, logger, **_):
-    logger.info(f"Detected updated resource {meta['name']}.")
     logger.debug(f"Spec: {spec}")
     logger.debug(f"Diff: {diff}")
 
-    run_id = await KB_HANDLER.updated(
-        meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
-    )
-    await KB_HANDLER.wait_for_completion(meta["namespace"], meta["name"], run_id)
+    try:
+        # Start indexing pipeline and get "Indexing" status
+        run_id, status = await KB_HANDLER.updated(
+            meta["namespace"], meta["name"], AkamaiKnowledgeBase.from_spec(spec)
+        )
+        patch["status"] = status
+
+        # Wait for pipeline to complete
+        final_status = await KB_HANDLER.wait_for_completion(
+            meta["namespace"], meta["name"], run_id
+        )
+        patch["status"] = final_status
+
+    except Exception as e:
+        if retry >= MAX_RETRIES:
+            # Last retry - mark as failed and don't re-raise
+            logger.error(
+                f"Knowledge base {meta['name']} update failed after {retry + 1} retries: {e}"
+            )
+            patch["status"] = KB_HANDLER.mark_failed("IndexingError", str(e))
+        else:
+            # Not the last retry - re-raise to trigger retry
+            logger.warning(
+                f"Knowledge base {meta['name']} update failed on attempt {retry + 1}, will retry: {e}"
+            )
+            raise
 
 
 @kopf.on.delete(RESOURCE_NAME, when=matches_namespaces)

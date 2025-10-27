@@ -1,5 +1,7 @@
 """Kubernetes API helper functions."""
 
+import asyncio
+import logging
 from typing import Dict, Any, Optional
 
 from kubernetes_asyncio import client
@@ -7,6 +9,8 @@ from kubernetes_asyncio.client import ApiException
 
 from ai_operators.agent_operator.constants import KB_CUSTOM_API_ARGS
 from ai_operators.agent_operator.resource import AkamaiKnowledgeBase
+
+logger = logging.getLogger(__name__)
 
 
 async def create_custom_object(
@@ -55,6 +59,7 @@ async def patch_custom_object(
             plural=plural,
             name=name,
             body=body,
+            _content_type="application/merge-patch+json",
         )
 
 
@@ -97,23 +102,50 @@ async def fetch_knowledge_base_config(
     return AkamaiKnowledgeBase.from_spec(spec)
 
 
-async def get_foundation_model_endpoint(model_name: str) -> str:
-    """Discover foundation model endpoint by querying services with labels modelType and modelName."""
+async def wait_for_deployment_ready(
+    name: str, namespace: str, timeout: int = 420, poll_interval: int = 5
+) -> bool:
+    """
+    Wait for a deployment to become ready.
+
+    Args:
+        name: Deployment name
+        namespace: Kubernetes namespace
+        timeout: Maximum time to wait in seconds (default: 420s)
+        poll_interval: Time between status checks in seconds (default: 5s)
+
+    Returns:
+        True if deployment is ready, False if timeout occurred
+    """
+    start_time = asyncio.get_event_loop().time()
+
     async with client.ApiClient() as api_client:
-        core_api = client.CoreV1Api(api_client)
+        apps_api = client.AppsV1Api(api_client)
 
-        # Query all services with modelType and modelName labels
-        label_selector = f"modelType,modelName={model_name}"
-        services = await core_api.list_service_for_all_namespaces(
-            label_selector=label_selector
-        )
+        while True:
+            elapsed = asyncio.get_event_loop().time() - start_time
 
-        if services.items:
-            service = services.items[0]
-            service_name = service.metadata.name
-            service_namespace = service.metadata.namespace
-            return f"{service_name}.{service_namespace}.svc.cluster.local"
-        else:
-            raise ValueError(
-                f"Foundation model '{model_name}' not found. No service with labels modelType,modelName={model_name}"
-            )
+            if elapsed >= timeout:
+                return False
+
+            try:
+                deployment = await apps_api.read_namespaced_deployment(
+                    name=name, namespace=namespace
+                )
+
+                # Check if deployment is ready
+                # A deployment is ready when ready_replicas >= desired replicas
+                replicas = deployment.spec.replicas or 0
+                ready_replicas = deployment.status.ready_replicas or 0
+
+                if ready_replicas >= replicas and replicas > 0:
+                    return True
+
+            except ApiException as e:
+                if e.status != 404:
+                    # Log errors other than "not found" (which is expected during startup)
+                    logger.error(f"Error checking deployment {name} status: {e}")
+                # Continue waiting even on errors
+
+            # Wait before next poll
+            await asyncio.sleep(poll_interval)

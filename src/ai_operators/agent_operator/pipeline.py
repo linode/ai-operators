@@ -11,6 +11,8 @@ using a range of third-party libraries.
 
 import json
 import anyio
+import base64
+from functools import partial
 from typing import Dict, Any
 from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
 from llama_index.core.tools import QueryEngineTool, FunctionTool
@@ -22,7 +24,6 @@ from llama_index.embeddings.openai_like import OpenAILikeEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 
 from kubernetes import client, config as k8s_config
-import base64
 
 
 class Pipeline:
@@ -48,9 +49,11 @@ class Pipeline:
         # Load LLM from config
         llm = OpenAILike(
             model=self.agent_config["foundation_model"]["name"],
-            api_base=f"http://{self.agent_config['foundation_model']['endpoint']}/openai/v1",
+            api_base=f"{self.agent_config['foundation_model']['endpoint']}",
             max_tokens=512,
             is_chat_model=True,
+            timeout=120.0,
+            max_retries=2,
         )
 
         Settings.llm = llm
@@ -96,8 +99,13 @@ class Pipeline:
                     tools.append(tool)
 
             elif tool_type == "function":
-                # Function tool
-                fn = self._resolve_function(tool_spec.get("name"))
+                # API-based function tool
+                if not tool_spec.get("apiUrl"):
+                    print(
+                        f"Warning: function tool '{tool_spec.get('name')}' missing apiUrl, skipping"
+                    )
+                    continue
+                fn = partial(self._call_external_api, tool_spec)
                 tool = FunctionTool.from_defaults(
                     fn=fn,
                     name=f"{tool_spec.get('name')}_function",
@@ -105,15 +113,44 @@ class Pipeline:
                 )
                 tools.append(tool)
 
+            elif tool_type == "subWorkflow":
+                # SubWorkflow tool (N8N, Dify, Flowise) - same as API-based function
+                if not tool_spec.get("apiUrl"):
+                    print(
+                        f"Warning: subWorkflow tool '{tool_spec.get('name')}' missing apiUrl, skipping"
+                    )
+                    continue
+                # Use partial to bind tool_spec
+                fn = partial(self._call_external_api, tool_spec)
+                tool = FunctionTool.from_defaults(
+                    fn=fn,
+                    name=f"{tool_spec.get('name')}_workflow",
+                    description=tool_spec.get(
+                        "description", "Workflow automation tool"
+                    ),
+                )
+                tools.append(tool)
+
             elif tool_type == "mcpServer":
                 # MCP server tool - skip if endpoint is unreachable
                 try:
-                    mcp_client = BasicMCPClient(tool_spec.get("endpoint"))
+                    endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
+                    api_key = tool_spec.get("apiKey")
+
+                    # Create MCP client with auth headers if API key is provided
+                    if api_key:
+                        mcp_client = BasicMCPClient(
+                            endpoint, headers={"Authorization": f"Bearer {api_key}"}
+                        )
+                    else:
+                        mcp_client = BasicMCPClient(endpoint)
+
                     mcp_tool = McpToolSpec(client=mcp_client)
                     tools.extend(await mcp_tool.to_tool_list_async())
                 except Exception as e:
+                    endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
                     print(
-                        f"Warning: Failed to connect to MCP server at {tool_spec.get('endpoint')}: {e}"
+                        f"Warning: Failed to connect to MCP server at {endpoint}: {e}"
                     )
 
         system_prompt = self.agent_config.get(
@@ -143,11 +180,42 @@ class Pipeline:
         )
         return VectorStoreIndex.from_vector_store(vector_store)
 
-    def _resolve_function(self, fn_name: str):
-        """Resolve function names to actual callables."""
-        if fn_name == "web_search":
-            return self._web_search
-        raise ValueError(f"Unknown function {fn_name}")
+    def _call_external_api(self, tool_spec: Dict[str, Any], query: str) -> str:
+        """Call an external API endpoint with authentication.
+
+        This function makes HTTP POST requests to external APIs with Bearer token authentication.
+        It's used by function tools and subWorkflow tools to integrate with external services.
+        The LLM will format the query parameter based on the tool's description.
+
+        Args:
+            tool_spec: Tool specification containing apiUrl, apiKey, and name
+            query: The query from the LLM - can be a JSON string or plain text
+
+        Returns:
+            The response text from the API, or an error message if the call fails
+        """
+        import requests
+
+        api_url = tool_spec.get("apiUrl")
+        api_key = tool_spec.get("apiKey")
+        tool_name = tool_spec.get("name", "api_function")
+
+        # Try to parse query as JSON, otherwise wrap it in a query field
+        try:
+            body = json.loads(query) if isinstance(query, str) else query
+        except (json.JSONDecodeError, TypeError):
+            body = {"query": query}
+
+        try:
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            response = requests.post(api_url, json=body, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            return f"Error calling {tool_name}: {str(e)}"
 
     def _get_db_credentials(self, kb_config: Dict[str, Any]):
         """Get database credentials from Kubernetes secret."""
@@ -163,10 +231,6 @@ class Pipeline:
             "host": base64.b64decode(secret.data["host"]).decode("utf-8"),
             "port": int(base64.b64decode(secret.data["port"]).decode("utf-8")),
         }
-
-    def _web_search(self, query: str) -> str:
-        """Search the web for information."""
-        ...
 
     def pipe(self, user_message, model_id, messages, body):
         async def stream_agent():

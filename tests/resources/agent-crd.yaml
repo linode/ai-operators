@@ -37,6 +37,11 @@ spec:
                 type: string
                 minLength: 1
                 example: llama
+              foundationModelEndpoint:
+                description: The foundation model endpoint to use for the agent
+                type: string
+                minLength: 1
+                example: http://llama-service.default.svc.cluster.local:8080/openai/v1
               agentInstructions:
                 description: Instructions that define the agent's behavior and personality
                 type: string
@@ -47,7 +52,28 @@ spec:
                 type: integer
                 default: 512
                 minimum: 1
-                maximum: 32000
+                maximum: 2048
+              routes:
+                description: Routes to other agents for conditional delegation
+                type: array
+                items:
+                  type: object
+                  properties:
+                    agent:
+                      description: Name of the target agent
+                      type: string
+                    condition:
+                      description: Condition for routing to this agent
+                      type: string
+                    apiUrl:
+                      description: API URL of the target agent
+                      type: string
+                    apiKey:
+                      description: API key for authentication
+                      type: string
+                  required:
+                  - agent
+                  - condition
               tools:
                 description: Tools available to the agent
                 type: array
@@ -55,20 +81,27 @@ spec:
                   type: object
                   properties:
                     type:
-                      description: Type of tool (knowledgeBase, function, mcpServer)
+                      description: Type of tool (knowledgeBase, function, mcpServer, subWorkflow)
                       type: string
                       enum:
                       - knowledgeBase
                       - function
                       - mcpServer
+                      - subWorkflow
                     name:
                       description: Name of the tool
                       type: string
                     description:
                       description: Description of how the agent can use this tool
                       type: string
+                    apiUrl:
+                      description: API URL for the tool (for mcpServer, function, subWorkflow)
+                      type: string
+                    apiKey:
+                      description: API key for authentication
+                      type: string
                     endpoint:
-                      description: Endpoint for mcpServer type tools
+                      description: Deprecated - use apiUrl instead
                       type: string
                   required:
                   - type
@@ -122,10 +155,6 @@ spec:
       type: string
       description: Foundation model
       jsonPath: .spec.foundationModel
-    - name: Tools
-      type: string
-      description: Number of tools
-      jsonPath: .spec.tools.length
     - name: Status
       type: string
       description: Agent deployment status

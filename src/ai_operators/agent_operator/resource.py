@@ -8,8 +8,11 @@ from ai_operators.agent_operator.converter import converter
 @define
 class AkamaiAgent:
     foundation_model: str
+    foundation_model_endpoint: str
     agent_instructions: str
-    max_tokens: int = 512
+    max_tokens: int
+    temperature: float
+    top_p: float
     # TODO make this strongly typed
     routes: List[Dict[str, Any]] = field(factory=list)
     tools: List[Dict[str, Any]] = field(factory=list)

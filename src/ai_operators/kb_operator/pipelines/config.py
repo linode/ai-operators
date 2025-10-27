@@ -74,11 +74,12 @@ class PipelineConfigLoader:
                 configmap = await core_api.read_namespaced_config_map(
                     "pipelines", self._namespace
                 )  # type: V1ConfigMap
+                return configmap.data or {}
             except ApiException as e:
                 if e.status == 404:
                     logger.info("No pipeline configuration set.")
                     return {}
-        return configmap.data or {}
+                raise
 
     async def _load_secrets(
         self, secret_names: Iterable[str]

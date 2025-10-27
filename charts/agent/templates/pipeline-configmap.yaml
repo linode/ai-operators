@@ -1,0 +1,726 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pipelines.name" . }}-pipelines-files
+data:
+  pipeline-requirements.txt: |
+    requests
+    psycopg2-binary
+    llama-index
+    llama-index-vector-stores-postgres
+    llama-index-embeddings-openai-like
+    llama-index-embeddings-nvidia
+    llama-index-llms-openai-like
+    llama-index-tools-mcp
+    opencv-python-headless
+    kubernetes
+  rag-pipeline.py: | # pragma: allowlist secret
+    import json
+    import anyio
+    import base64
+    import time
+    import requests
+    from functools import partial
+    from typing import Dict, Any
+    from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
+    from llama_index.core.tools import QueryEngineTool, FunctionTool
+    from llama_index.core.agent.workflow import AgentWorkflow
+    from llama_index.core.workflow import Context
+    from llama_index.core import Settings, VectorStoreIndex, Document
+    from llama_index.core.llms import ChatMessage
+    from llama_index.core.chat_engine import SimpleChatEngine
+    from llama_index.llms.openai_like import OpenAILike
+    from llama_index.embeddings.nvidia import NVIDIAEmbedding
+    from llama_index.embeddings.openai_like import OpenAILikeEmbedding
+    from llama_index.vector_stores.postgres import PGVectorStore
+    from kubernetes import client, config as k8s_config
+    from pydantic import BaseModel, Field
+
+    # Configuration constants
+    SIMILARITY_TOP_K = 3
+    MAX_ROUTING_DEPTH = 3
+    REQUEST_TIMEOUT = 120
+    TYPING_DELAY = 0.01  # 10ms delay between characters
+
+    class EmailQuery(BaseModel):
+        subject: str = Field(..., description="Email subject line (required)")
+        description: str = Field(..., description="Detailed description of the issue (required)")
+        accountName: str = Field(..., description="Account name or username (required)")
+
+    class SendEmailSchema(BaseModel):
+        query: EmailQuery = Field(..., description="The query parameters for the email workflow")
+
+    class Pipeline:
+      def __init__(self):
+        self.name = "rag-pipeline"
+        self.agent_config = None
+        self.index = None
+        self.agent = None
+        self.ctx = None
+        self.chat_engine = None
+        self.kb_index = None  # Store the KB index for creating chat engines
+        self.system_prompt = None  # Store system prompt for LLM-only mode
+
+      async def on_startup(self):
+        # Load config from mounted ConfigMap
+        config_path = "/config/agent-config.json"
+        with open(config_path, "r") as f:
+          self.agent_config = json.load(f)
+
+        print(f"DEBUG: Loaded agent config: {json.dumps(self.agent_config, indent=2)}")
+        self.name = self.agent_config["name"]
+
+        # Build agent from config
+        await self._build_agent_from_config()
+
+      async def _build_agent_from_config(self):
+        # Base required params
+        llm_kwargs = {
+            "model": self.agent_config["foundation_model"]["name"],
+            "api_base": self.agent_config["foundation_model"]["endpoint"],
+            "max_tokens": self.agent_config.get("max_tokens", 512),
+            "is_chat_model": True,
+            "is_function_calling_model": True,
+            "timeout": 120.0,
+            "max_retries": 2,
+        }
+
+        # Optional params
+        if "temperature" in self.agent_config:
+            llm_kwargs["temperature"] = self.agent_config["temperature"]
+        if "top_p" in self.agent_config:
+            llm_kwargs["top_p"] = self.agent_config["top_p"]
+
+        # Instantiate LLM
+        llm = OpenAILike(**llm_kwargs)
+        Settings.llm = llm
+
+        # Set up embedding model globally (assumes all KBs use the same embedding model)
+        for tool_spec in self.agent_config.get("tools", []):
+          if tool_spec.get("type") == "knowledgeBase" and "config" in tool_spec:
+            kb_config = tool_spec["config"]
+
+            embedding_model = kb_config.get("embedding_model")
+            embedding_api_base = kb_config.get("embedding_api_base")
+
+            if embedding_model and embedding_api_base:
+              Settings.embed_model = NVIDIAEmbedding(
+                  model=embedding_model,
+                  base_url=embedding_api_base,
+                  truncate="END",
+              )
+              #TODO don't remove this
+              # Settings.embed_model = OpenAILikeEmbedding(
+              #  model_name=embedding_model,
+              #  api_base=embedding_api_base,
+              #  embed_batch_size=kb_config.get("embed_batch_size", 10),
+              #  max_retries=3,
+              #  timeout=180.0,
+              # )
+              break  # Only set once from first KB
+
+        # Dynamically build tools from config
+        tools = []
+        kb_tools = []  # Track knowledge base tools separately
+        for tool_spec in self.agent_config.get("tools", []):
+          tool_type = tool_spec.get("type")
+
+          if tool_type == "knowledgeBase":
+            # Build knowledge base tool if config is present
+            if "config" in tool_spec:
+              kb_config = tool_spec["config"]
+              kb_name = tool_spec.get("name", "knowledge_base")
+
+              index = self._build_vector_index(kb_config, kb_name)
+              query_engine = index.as_query_engine(similarity_top_k=SIMILARITY_TOP_K)
+              tool = QueryEngineTool.from_defaults(
+                query_engine=query_engine,
+                name=f"{kb_name}_knowledge_base",
+                description=tool_spec.get("description", "Knowledge base search tool"),
+                # Note: return_direct removed - agent should synthesize from all tool results
+              )
+              tools.append(tool)
+              kb_tools.append((index, tool_spec))  # Store index and spec for chat engine
+
+          elif tool_type == "function":
+            # API-based function tool
+            if not tool_spec.get("apiUrl"):
+              print(f"Warning: function tool '{tool_spec.get('name')}' missing apiUrl, skipping")
+              continue
+            fn = partial(self._call_external_api, tool_spec)
+            tool = FunctionTool.from_defaults(
+              fn=fn,
+              name=f"{tool_spec.get('name')}",
+              description=tool_spec.get("description", "Call an external API endpoint with authentication."),
+            )
+            tools.append(tool)
+
+          elif tool_type == "subWorkflow":
+            # SubWorkflow tool (N8N, Dify, Flowise) - same as API-based function
+            if not tool_spec.get("apiUrl"):
+              print(f"Warning: subWorkflow tool '{tool_spec.get('name')}' missing apiUrl, skipping")
+              continue
+            # Use partial to bind tool_spec
+            fn = partial(self._call_external_api, tool_spec)
+            name = tool_spec.get("name")
+
+            # hardcode schema for this specific tool
+            if name == "trigger-n8s-send-email-wf":
+                tool = FunctionTool.from_defaults(
+                    fn=fn,
+                    name=name,
+                    description=tool_spec.get("description", "Workflow automation tool"),
+                    fn_schema=SendEmailSchema.model_json_schema(),
+                )
+            else:
+                tool = FunctionTool.from_defaults(
+                    fn=fn,
+                    name=name,
+                    description=tool_spec.get("description", "Workflow automation tool"),
+                )
+            tools.append(tool)
+
+          elif tool_type == "mcpServer":
+            try:
+              endpoint = tool_spec.get("apiUrl")
+              api_key = tool_spec.get("apiKey")
+
+              # Create MCP client with auth headers if API key is provided
+              if api_key:
+                # Split apiKey by semicolon: first part is bearer token, second part (if present) is X-Linode-Token
+                key_parts = api_key.split(";", 1)
+                bearer_token = key_parts[0].strip()
+
+                headers = {"Authorization": f"Bearer {bearer_token}"}
+
+                # Add X-Linode-Token if a second part exists
+                if len(key_parts) > 1:
+                  linode_token = key_parts[1].strip()
+                  headers["X-Linode-Token"] = f"Bearer {linode_token}"
+
+                mcp_client = BasicMCPClient(endpoint, headers=headers)
+              else:
+                mcp_client = BasicMCPClient(endpoint)
+
+              mcp_tool = McpToolSpec(client=mcp_client)
+              mcp_tools_raw = await mcp_tool.to_tool_list_async()
+
+              # Wrap MCP tools to fix JSON string parameters
+              for mcp_tool_raw in mcp_tools_raw:
+                original_fn = mcp_tool_raw.fn
+                tool_name = mcp_tool_raw.metadata.name
+                tool_desc = mcp_tool_raw.metadata.description
+
+                def make_wrapper(orig_fn, name):
+                  def snake_to_camel(snake_str):
+                    """Convert snake_case to camelCase."""
+                    components = snake_str.split('_')
+                    return components[0] + ''.join(x.title() for x in components[1:])
+
+                  async def wrapper(**kwargs):
+                    print(f"DEBUG: {name} - Received kwargs: {kwargs}")
+
+                    # Fix: Convert string representations of objects to actual objects
+                    # This is needed because LlamaIndex/LLM passes objects as strings
+                    fixed_kwargs = {}
+                    for key, value in kwargs.items():
+                      if isinstance(value, str):
+                        stripped = value.strip()
+                        # Handle special case: string "null" should become empty object
+                        if stripped.lower() == 'null' or stripped.lower() == 'none':
+                          fixed_kwargs[key] = {}
+                          print(f"DEBUG: {name} - Converted '{key}' from null to empty object")
+                        # Check if it looks like a JSON object or array
+                        elif (stripped.startswith('{') and stripped.endswith('}')) or \
+                           (stripped.startswith('[') and stripped.endswith(']')):
+                          try:
+                            # Try standard JSON first (double quotes)
+                            fixed_kwargs[key] = json.loads(value)
+                            print(f"DEBUG: {name} - Parsed '{key}' as JSON")
+                          except:
+                            try:
+                              # Fall back to eval for Python dict syntax (single quotes)
+                              # Using ast.literal_eval is safer than eval
+                              import ast
+                              fixed_kwargs[key] = ast.literal_eval(value)
+                              print(f"DEBUG: {name} - Parsed '{key}' as Python literal")
+                            except:
+                              # If both fail, keep as string
+                              fixed_kwargs[key] = value
+                              print(f"DEBUG: {name} - Could not parse '{key}', keeping as string")
+                        else:
+                          fixed_kwargs[key] = value
+                      else:
+                        fixed_kwargs[key] = value
+
+                    # Ensure required parameters exist for Linode MCP tools
+                    # If queryParams is missing, add empty object
+                    if 'queryParams' not in fixed_kwargs:
+                      fixed_kwargs['queryParams'] = {}
+                      print(f"DEBUG: {name} - Auto-added empty queryParams")
+
+                    # If pathParams is missing, add with apiVersion
+                    if 'pathParams' not in fixed_kwargs:
+                      fixed_kwargs['pathParams'] = {'apiVersion': 'v4'}
+                      print(f"DEBUG: {name} - Auto-added pathParams with apiVersion='v4'")
+                    elif isinstance(fixed_kwargs['pathParams'], dict):
+                      # Ensure pathParams has apiVersion if it exists
+                      if 'apiVersion' not in fixed_kwargs['pathParams']:
+                        fixed_kwargs['pathParams']['apiVersion'] = 'v4'
+                        print(f"DEBUG: {name} - Auto-added apiVersion='v4' to existing pathParams")
+
+                      # Fix snake_case to camelCase for common Linode API params
+                      if 'linode_id' in fixed_kwargs['pathParams']:
+                        linode_id_value = fixed_kwargs['pathParams'].pop('linode_id')
+                        # Ensure it's an integer
+                        if isinstance(linode_id_value, str):
+                          linode_id_value = int(linode_id_value)
+                        fixed_kwargs['pathParams']['linodeId'] = linode_id_value
+                        print(f"DEBUG: {name} - Renamed linode_id to linodeId and converted to int: {linode_id_value}")
+
+                    print(f"DEBUG: {name} - Final kwargs: {fixed_kwargs}")
+
+                    try:
+                      # Check if orig_fn is async or sync
+                      import inspect
+                      if inspect.iscoroutinefunction(orig_fn):
+                        result = await orig_fn(**fixed_kwargs)
+                      else:
+                        result = orig_fn(**fixed_kwargs)
+                      print(f"DEBUG: {name} - Success! Result type: {type(result)}")
+                      return result
+                    except Exception as e:
+                      # Get the full exception details
+                      import traceback
+                      full_error = traceback.format_exc()
+                      print(f"DEBUG: {name} - MCP Error: {full_error}")
+                      # Return full error so LLM can see exactly what went wrong
+                      return f"Tool call failed with error:\n{full_error}\n\nPlease analyze the error and retry with corrected parameters."
+                  return wrapper
+
+                # Create new tool with wrapped function
+                wrapped_fn = make_wrapper(original_fn, tool_name)
+
+                # Debug: Print the schema to understand what the LLM sees
+                if hasattr(mcp_tool_raw.metadata, 'fn_schema'):
+                  print(f"DEBUG: {tool_name} schema: {mcp_tool_raw.metadata.fn_schema}")
+
+                # Use the original metadata but with our wrapped function
+                new_tool = FunctionTool(
+                  fn=wrapped_fn,
+                  metadata=mcp_tool_raw.metadata
+                )
+                tools.append(new_tool)
+                print(f"MCP Tool wrapped: {tool_name}")
+
+              # Don't add original tools
+              # tools.extend(mcp_tools_raw)
+            except Exception as e:
+              endpoint = tool_spec.get("apiUrl") or tool_spec.get("endpoint")
+              print(f"Warning: Failed to connect to MCP server at {endpoint}: {e}")
+              import traceback
+              traceback.print_exc()
+
+        # Create system prompt optimized for function calling
+        base_instructions = self.agent_config.get("agent_instructions")
+
+        # Add a strict schema reminder for tool calls
+        tool_call_reminder = (
+            "\n\n"
+            "IMPORTANT TOOL CALLING RULES:\n"
+            " Always include the 'arguments' field inside every 'function' object.\n"
+            "   - Even if no parameters are required, include: 'arguments': '{}'\n"
+            "   - Never omit the 'arguments' field.\n"
+            "\n"
+            " Arguments must always be a valid JSON object (never plain text).\n"
+            "   Example:\n"
+            "   {\n"
+            '     "tool_calls": [\n'
+            '       {\n'
+            '         "type": "function",\n'
+            '         "function": {\n'
+            '           "name": "get-linode-instances",\n'
+            '           "arguments": "{ \\"queryParams\\": {}, \\"pathParams\\": {} }"\n'
+            '         }\n'
+            '       }\n'
+            '     ]\n'
+            '   }\n'
+            "\n"
+            " Before calling ANY tool, you must load in its schema.\n"
+            "   - Include ALL required fields exactly as defined in the tool schema.\n"
+            "   - If unsure or missing required info, ask the user for clarification before calling.\n"
+            "\n"
+        )
+
+        full_instructions = f"{base_instructions.strip()}\n\n{tool_call_reminder.strip()}"
+
+        if not tools:
+          # No tools - just use LLM directly
+          print("No tools configured, using LLM directly")
+          self.agent = llm
+          self.system_prompt = base_instructions
+          self.ctx = None
+        elif len(tools) == 1 and len(kb_tools) == 1:
+          # Single knowledge base - use chat engine for fast RAG
+          print("Single knowledge base detected, using chat engine for fast RAG")
+          index, tool_spec = kb_tools[0]
+          self.kb_index = index  # Store for creating per-session chat engines
+          self.agent = None
+          self.system_prompt = base_instructions
+          self.ctx = None
+        else:
+          # Multiple tools or non-KB tools - use AgentWorkflow
+          print(f"Configured {len(tools)} tools, using AgentWorkflow")
+          self.agent = AgentWorkflow.from_tools_or_functions(
+            tools,
+            llm=llm,
+            verbose=True,
+            system_prompt=full_instructions,
+            timeout=120.0,
+          )
+          # Don't create context here - create per session
+          self.ctx = None
+          self.system_prompt = None
+
+      def _build_vector_index(self, kb_config: Dict[str, Any], kb_name: str):
+        """Builds a vector index based on KB config."""
+        db_credentials = self._get_db_credentials(kb_config)
+
+        vector_store = PGVectorStore.from_params(
+          database=kb_config.get("table_name"),  # Database name is the same as KB name
+          host=db_credentials["host"],
+          port=db_credentials["port"],
+          user=db_credentials["username"],
+          password=db_credentials["password"],
+          table_name=kb_config.get("table_name"),
+          embed_dim=int(kb_config.get("embed_dim")),
+        )
+        return VectorStoreIndex.from_vector_store(vector_store)
+
+      def _call_external_api(self, tool_spec: Dict[str, Any], query: str) -> str:
+        """Call an external API endpoint with authentication.
+
+        This function makes HTTP POST requests to external APIs with Bearer token authentication.
+        It's used by function tools and subWorkflow tools to integrate with external services.
+        The LLM will pass parameters based on the tool's schema.
+
+        Args:
+            tool_spec: Tool specification containing apiUrl, apiKey, and name
+            query: The query parameters from the LLM (for tools with schema)
+
+        Returns:
+            The response text from the API, or an error message if the call fails
+        """
+        api_url = tool_spec.get("apiUrl")
+        api_key = tool_spec.get("apiKey")
+        tool_name = tool_spec.get("name", "api_function")
+
+        try:
+          body = json.loads(query) if isinstance(query, str) else query
+        except (json.JSONDecodeError, TypeError):
+          body = {"query": query}
+
+        print(f"DEBUG: Calling {tool_name} at {api_url} with body: {json.dumps(body)[:200]}")
+
+        try:
+          headers = {"Content-Type": "application/json"}
+          if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+          response = requests.post(
+            api_url,
+            json=body,
+            headers=headers,
+            timeout=30
+          )
+          response.raise_for_status()
+          result = response.text if response.text else "Success: Request completed"
+          print(f"DEBUG: {tool_name} returned: {result[:200]}")
+          return result
+        except Exception as e:
+          error_msg = f"Error calling {tool_name}: {str(e)}"
+          print(f"DEBUG: {error_msg}")
+          return error_msg
+
+      def _get_db_credentials(self, kb_config: Dict[str, Any]):
+        """Get database credentials from Kubernetes secret."""
+        k8s_config.load_incluster_config()
+        v1 = client.CoreV1Api()
+        secret = v1.read_namespaced_secret( # pragma: allowlist secret
+          name=kb_config.get("secret_name"),
+          namespace=kb_config.get("secret_namespace", self.agent_config["namespace"]),
+        )
+        return {
+          "username": base64.b64decode(secret.data["username"]).decode("utf-8"),
+          "password": base64.b64decode(secret.data["password"]).decode("utf-8"),
+          "host": base64.b64decode(secret.data["host"]).decode("utf-8"),
+          "port": int(base64.b64decode(secret.data["port"]).decode("utf-8")),
+        }
+
+
+      def _convert_to_chat_history(self, messages):
+        """Convert request messages to ChatMessage objects for chat history.
+
+        Args:
+          messages: List of message dicts with 'role' and 'content'
+
+        Returns:
+          List of ChatMessage objects excluding the last message (current message)
+        """
+        chat_history = []
+        if messages and len(messages) > 1:
+            for msg in messages[:-1]:  # Exclude current message
+                chat_history.append(ChatMessage(role=msg['role'], content=msg['content']))
+        return chat_history
+
+      def _check_and_route(self, user_message: str, messages: list, body: dict):
+        """Check if question should be routed to another agent based on conditions.
+
+        Args:
+          user_message: The user's question
+          messages: List of all messages including history
+          body: Request body containing routing chain
+
+        Returns:
+          (should_route: bool, response_generator: generator or None)
+        """
+        routes = self.agent_config.get("routes", [])
+        if not routes:
+          return False, None
+
+        namespace = self.agent_config.get("namespace", "default")
+        current_agent = self.agent_config.get("name")
+
+        # Check routing chain for loop prevention
+        routing_chain = body.get("x-routing-chain", "")
+        if routing_chain:
+          chain_list = routing_chain.split("->")
+          # Check if current agent is already in the chain
+          if current_agent in chain_list:
+            print(f"WARNING: Routing loop detected: {routing_chain} -> {current_agent}")
+            return False, None
+          # Check max depth
+          if len(chain_list) >= MAX_ROUTING_DEPTH:
+            print(f"WARNING: Max routing depth ({MAX_ROUTING_DEPTH}) reached: {routing_chain}")
+            return False, None
+          new_chain = f"{routing_chain}->{current_agent}"
+        else:
+          new_chain = current_agent
+
+        # Build route options for single LLM evaluation
+        route_options = []
+        agent_names = []
+
+        for route in routes:
+          condition = route.get("condition", "")
+          target_agent = route.get("agent", "")
+
+          if not condition or not target_agent:
+            continue
+
+          # Skip if routing to self
+          if target_agent == current_agent:
+            print(f"DEBUG: Skipping self-route to {target_agent}")
+            continue
+
+          route_options.append(f"- Route to '{target_agent}' if: {condition}")
+          agent_names.append(target_agent)
+
+        if not route_options:
+          return False, None
+
+        # Single LLM call for all routes
+        eval_prompt = f"""Given this question, determine which agent (if any) should handle it.
+
+        Question: {user_message}
+
+        Available routes:
+        {chr(10).join(route_options)}
+
+        Answer with ONLY the agent name (e.g., '{agent_names[0]}') or 'none' if no route matches."""
+
+        print(f"DEBUG: Evaluating routes with single LLM call")
+        msgs = [ChatMessage(role="user", content=eval_prompt)]
+        llm = Settings.llm
+        response = llm.chat(msgs)
+        evaluation = str(response.message.content).strip().lower()
+
+        print(f"DEBUG: Route evaluation result: {evaluation}")
+
+        # Check if evaluation matches an agent name
+        if evaluation == "none":
+          return False, None
+
+        # Find matching agent (case-insensitive)
+        target_agent = None
+        for agent_name in agent_names:
+          if agent_name.lower() == evaluation:
+            target_agent = agent_name
+            break
+
+        if not target_agent:
+          print(f"WARNING: LLM returned unknown agent: {evaluation}")
+          return False, None
+
+        # Get route configuration
+        route_config = None
+        for route in routes:
+          if route.get("agent", "").lower() == target_agent.lower():
+            route_config = route
+            break
+
+        # Determine target URL and headers
+        if route_config and route_config.get("apiUrl"):
+          target_url = route_config["apiUrl"]
+          # Ensure URL ends with /chat/completions
+          if not target_url.endswith("/chat/completions"):
+            target_url = target_url.rstrip("/") + "/chat/completions"
+        else:
+          target_url = f"http://{target_agent}.{namespace}.svc.cluster.local:9099/v1/chat/completions"
+
+        headers = {"Content-Type": "application/json"}
+        if route_config and route_config.get("apiKey"):
+          headers["Authorization"] = f"Bearer {route_config['apiKey']}"
+
+        print(f"DEBUG: Routing to {target_url} (chain: {new_chain})")
+
+        try:
+          response = requests.post(
+            target_url,
+            json={
+              "model": "rag-pipeline",
+              "messages": messages,  # Pass all messages including history
+              "stream": True,
+              "x-routing-chain": new_chain
+            },
+            headers=headers,
+            stream=True,
+            timeout=REQUEST_TIMEOUT
+          )
+          response.raise_for_status()
+
+          # Generator to stream response
+          def stream_routed_response():
+            for line in response.iter_lines():
+              if line:
+                line_text = line.decode('utf-8')
+                if line_text.startswith('data: '):
+                  data = line_text[6:]
+                  if data.strip() == '[DONE]':
+                    break
+                  try:
+                    import json as json_lib
+                    chunk = json_lib.loads(data)
+                    if 'choices' in chunk and len(chunk['choices']) > 0:
+                      delta = chunk['choices'][0].get('delta', {})
+                      content = delta.get('content', '')
+                      if content:
+                        yield content
+                  except:
+                    pass
+
+          return True, stream_routed_response()
+
+        except Exception as e:
+          print(f"ERROR: Failed to route to {target_agent}: {e}")
+          return False, None
+
+      def pipe(self, user_message, model_id, messages, body):
+        print(f"DEBUG: body: {body}")
+        print(f"DEBUG: Body keys: {body.keys()}")
+
+        # Check if question should be routed to another agent
+        should_route, routed_response = self._check_and_route(user_message, messages, body)
+        if should_route and routed_response:
+          print("DEBUG: Routing to another agent")
+          try:
+            for chunk in routed_response:
+              yield chunk
+            return
+          except Exception as e:
+            print(f"ERROR: Error streaming routed response: {e}")
+            yield f"Error routing to agent: {str(e)}"
+            return
+
+        # Check which mode: chat engine (single KB), LLM direct (no tools), or AgentWorkflow (multiple tools)
+        if self.kb_index:
+            # Chat engine mode - single knowledge base - fast RAG with stateless chat history
+            try:
+                chat_history = self._convert_to_chat_history(messages)
+
+                # Create chat engine on-demand (stateless)
+                chat_engine = self.kb_index.as_chat_engine(
+                    chat_mode="condense_plus_context",
+                    streaming=True,
+                    similarity_top_k=SIMILARITY_TOP_K,
+                    system_prompt=self.system_prompt if hasattr(self, 'system_prompt') else None
+                )
+                streaming_response = chat_engine.stream_chat(user_message, chat_history=chat_history)
+                # Yield tokens for streaming output
+                for token in streaming_response.response_gen:
+                    yield token
+            except Exception as e:
+                yield f"Error: {str(e)}"
+        elif hasattr(self, 'system_prompt') and self.system_prompt and self.agent:
+            # LLM direct mode - no tools - use SimpleChatEngine with stateless chat history
+            try:
+                chat_history = self._convert_to_chat_history(messages)
+
+                # Create SimpleChatEngine on-demand (stateless)
+                simple_chat = SimpleChatEngine.from_defaults(
+                    llm=self.agent,
+                    system_prompt=self.system_prompt
+                )
+                streaming_response = simple_chat.stream_chat(user_message, chat_history=chat_history)
+                # Stream tokens
+                for token in streaming_response.response_gen:
+                    yield token
+            except Exception as e:
+                yield f"Error: {str(e)}"
+        else:
+            # AgentWorkflow mode - has tools - needs async handling with stateless chat history
+            async def get_agent_response():
+                from llama_index.core.agent.workflow import AgentInput, AgentStream, ToolCallResult, AgentOutput, ToolCall
+                from llama_index.core.workflow.errors import WorkflowRuntimeError
+
+                try:
+                    chat_history = self._convert_to_chat_history(messages)
+
+                    print(f"DEBUG: Running agent with message: {user_message}")
+                    print(f"DEBUG: Chat history length: {len(chat_history)}")
+                    handler = self.agent.run(user_message, chat_history=chat_history, max_iterations=20)
+
+                    # Stream events for debugging
+                    async for event in handler.stream_events():
+                      if isinstance(event, AgentStream):
+                         print(event.delta, end="", flush=True)
+                      elif isinstance(event, ToolCall):
+                        print(f"\nCalling: {event.tool_name}({event.tool_kwargs})")
+                      elif isinstance(event, ToolCallResult):
+                        tool_output_str = str(event.tool_output)
+                        print(f"\nResult: {event.tool_name} -> {tool_output_str}")
+
+                    final_result = await handler
+                    print(f"\nDEBUG: Agent finished with result: {str(final_result)[:200]}")
+                    return str(final_result)
+                except WorkflowRuntimeError as e:
+                    error_msg = str(e)
+                    print(f"\nDEBUG: WorkflowRuntimeError: {error_msg}")
+
+                    if "Max iterations" in error_msg:
+                        return "I apologize, but I'm having trouble processing your request. I've reached my reasoning limit. Could you please rephrase your question or be more specific about what you'd like to know?"
+                    elif "400" in error_msg or "BadRequestError" in error_msg:
+                        return "I apologize, but I encountered an error while processing your request. This might be a temporary issue. Could you please try rephrasing your question?"
+                    else:
+                        return f"I apologize, but I encountered an unexpected error: {error_msg[:200]}. Please try again or contact support if the issue persists."
+                except Exception as e:
+                    print(f"\nDEBUG: Unexpected error: {type(e).__name__}: {str(e)}")
+                    return "I apologize, but I encountered an unexpected error while processing your request. Please try again."
+
+            # Run async function and get response
+            result = anyio.from_thread.run(get_agent_response)
+
+            # Stream the response character by character with typing effect
+            for char in result:
+                yield char
+                time.sleep(TYPING_DELAY)

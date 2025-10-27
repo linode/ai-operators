@@ -1,0 +1,180 @@
+nameOverride: ""
+namespaceOverride: ""
+
+# -- Value of cluster domain
+clusterDomain: cluster.local
+extraLabels: {}
+annotations: {}
+podAnnotations: {}
+podLabels: {}
+replicaCount: 1
+# -- Strategy for updating the deployment
+strategy: {}
+image:
+  repository: ghcr.io/open-webui/pipelines
+  tag: main
+  pullPolicy: Always
+
+# -- Configure imagePullSecrets to use private registry
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry>
+imagePullSecrets: []
+# imagePullSecrets:
+# - name: myRegistryKeySecretName
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# -- Configure startup probe for slow-starting containers
+# The / endpoint returns {"status": true} immediately without loading pipelines
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+startupProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 30  # 15s + (30 * 10s) = 315s max startup time
+
+# -- Configure liveness probe to detect and restart unresponsive containers
+# Only checks if the FastAPI app is responsive, not if pipelines are loaded
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 0  # startup probe handles initial delay
+  periodSeconds: 30
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3  # Will restart after 90s of failures
+
+# -- Configure readiness probe to control traffic routing
+# Uses /models endpoint which verifies pipelines are actually loaded
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 0  # startup probe handles initial delay
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 6  # Allows up to 60s for pipelines to load after app starts
+ingress:
+  enabled: false
+persistence:
+  enabled: true
+  size: 2Gi
+  existingClaim: ""
+  # -- If using multiple replicas, you must update accessModes to ReadWriteMany
+  accessModes:
+    - ReadWriteOnce
+  storageClass: ""
+  selector: {}
+  annotations: {}
+
+serviceAccount:
+  enable: true
+  automountServiceAccountToken: true
+  # -- List of secret names that the agent can access
+  # Add secret names here that contain credentials needed by the agent
+  allowedSecrets: []
+  # allowedSecrets:
+  # - pgvector-cluster-app
+  # - openai-api-key
+
+# -- Configure pod security context
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container>
+podSecurityContext:
+  {}
+  # fsGroupChangePolicy: Always
+  # sysctls: []
+  # supplementalGroups: []
+  # fsGroup: 1001
+
+# -- Configure container security context
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-containe>
+containerSecurityContext:
+  {}
+  # runAsUser: 1001
+  # runAsGroup: 1001
+  # runAsNonRoot: true
+  # privileged: false
+  # allowPrivilegeEscalation: false
+  # readOnlyRootFilesystem: false
+  # capabilities:
+  #   drop:
+  #     - ALL
+  # seccompProfile:
+  #   type: "RuntimeDefault"
+
+# -- Node labels for pod assignment.
+nodeSelector: {}
+
+# -- Tolerations for pod assignment
+tolerations: []
+
+# -- Affinity for pod assignment
+affinity: {}
+
+# -- HostAliases to be added to hosts-file of each container
+hostAliases: []
+
+service:
+  type: ClusterIP
+  annotations: {}
+  port: 9099
+  containerPort: 9099
+  nodePort: ""
+  labels: {}
+  loadBalancerClass: ""
+
+# -- Additional environments variables on the output Deployment definition. These are used to pull initial Pipeline files, and help configure Pipelines with required values (e.g. Langfuse API keys)
+extraEnvVars:
+  - name: PIPELINES_REQUIREMENTS_PATH
+    value: /opt/pipeline-requirements.txt
+  - name: PIPELINES_URLS
+    value: file:///opt/rag-pipeline.py
+
+# -- Additional environments variables on the output Deployment definition, common across environments.
+commonEnvVars: []
+
+# -- Configure container volume mounts
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/configure-volume-storage/>
+volumeMounts:
+  - name: pipelines-files
+    mountPath: /opt
+    readOnly: true
+
+# -- Additional init containers to add to the deployment
+# ref: <https://kubernetes.io/docs/concepts/workloads/pods/init-containers/>
+extraInitContainers: []
+# - name: custom-init
+#   image: busybox:latest
+#   command: ['sh', '-c', 'echo "Custom init container running"']
+#   volumeMounts:
+#   - name: data
+#     mountPath: /data
+
+# -- Configure pod volumes
+# ref: <https://kubernetes.io/docs/tasks/configure-pod-container/configure-volume-storage/>
+volumes: []
+  # Pipelines files volume is added automatically via template
+  # - name: pipelines-files
+  #   configMap:
+  #     name: {{ include "pipelines.name" . }}-pipelines-files
+
+# -- Extra resources to deploy with Open WebUI Pipelines
+extraResources:
+  []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: example-configmap
+  #   data:
+  #     example-key: example-value
