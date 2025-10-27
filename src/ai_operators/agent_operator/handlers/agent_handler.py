@@ -101,25 +101,34 @@ class AgentHandler:
         - Waiting for newly created/updated deployments to become ready
         """
         import asyncio
+        from kubernetes_asyncio import client
+        from kubernetes_asyncio.client import ApiException
 
         agent_data = AgentData.for_status_check(namespace, name)
 
-        # Wait for deployment to exist (with timeout)
+        # Wait for Kubernetes deployment to exist (with timeout)
         deployment_wait_timeout = 120  # seconds to wait for deployment to be created
         deployment_poll_interval = 2  # seconds between checks
         elapsed = 0
-        deployment_status = None
+        deployment_exists = False
 
         while elapsed < deployment_wait_timeout:
-            deployment_status = await self.agent_service.get_deployment_status(
-                agent_data
-            )
-            if deployment_status:
-                break
+            try:
+                async with client.ApiClient() as api_client:
+                    apps_api = client.AppsV1Api(api_client)
+                    await apps_api.read_namespaced_deployment(
+                        name=agent_data.name, namespace=agent_data.namespace
+                    )
+                    deployment_exists = True
+                    break
+            except ApiException as e:
+                if e.status != 404:
+                    self.logger.error(f"Error checking deployment {name}: {e}")
+
             await asyncio.sleep(deployment_poll_interval)
             elapsed += deployment_poll_interval
 
-        if not deployment_status:
+        if not deployment_exists:
             self.logger.warning(
                 f"Deployment {name} not found after {deployment_wait_timeout}s"
             )
