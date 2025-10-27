@@ -35,12 +35,18 @@ class AgentHandler:
         self.logger.info(f"Processing created agent {name} in namespace {namespace}")
 
         try:
-            existing_status = await self.wait_for_agent_ready(namespace, name)
-            if existing_status:
+            # Quick check if deployment already exists (don't wait)
+            agent_data = AgentData.for_status_check(namespace, name)
+            existing_deployment = await self.agent_service.get_deployment_status(
+                agent_data
+            )
+
+            if existing_deployment:
                 self.logger.info(
-                    f"Agent {name} deployment already exists, returning current status"
+                    f"Agent {name} deployment already exists, skipping creation"
                 )
-                return existing_status
+                # Don't create, just return current deployed status
+                return get_agent_running_status(name).to_dict()
 
             agent_data = await create_agent_data(namespace, name, agent)
             deployment_id = await self.agent_service.create_agent(agent_data)
